@@ -1,0 +1,70 @@
+---
+title: "Trials"
+author: "Lucy Yin"
+date: "6/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## NHL records API
+```{r}
+library(httr)
+library(jsonlite)
+library(tidyverse)
+
+franchise <- GET("https://records.nhl.com/site/api/franchise")
+franchise.text <- content(franchise, "text")
+franchise.json <- fromJSON(franchise.text, flatten=TRUE)
+franchise.json$data
+```
+
+```{r}
+team.id.index <- franchise.json$data %>% select("id", "fullName", "teamAbbrev", "teamCommonName", "teamPlaceName")
+team.id.index
+```
+
+```{r}
+franchise_team_totals <- GET("https://records.nhl.com/site/api/franchise-team-totals")
+franchise_team_totals.text <- content(franchise_team_totals, "text")
+franchise_team_totals.json <- fromJSON(franchise_team_totals.text, flatten=TRUE)
+franchise_team_totals.json
+```
+
+```{r}
+franchise_season <- GET("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=26")
+franchise_season.text <- content(franchise_season, "text")
+franchise_season.json <- fromJSON(franchise_season.text, flatten=TRUE)
+franchise_season.json
+```
+
+```{r}
+franchise_goalie <- GET("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=26")
+franchise_goalie.text <- content(franchise_goalie, "text")
+franchise_goalie.json <- fromJSON(franchise_goalie.text, flatten=TRUE)
+franchise_goalie.json
+```
+
+```{r}
+franchise_skater <- GET("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=26")
+franchise_skater.text <- content(franchise_skater, "text")
+franchise_skater.json <- fromJSON(franchise_skater.text, flatten=TRUE)
+franchise_skater.json
+```
+
+```{r}
+franchise_detail <- GET("https://records.nhl.com/site/api/franchise-detail?cayenneExp=mostRecentTeamId=12")
+franchise_detail.text <- content(franchise_detail, "text")
+franchise_detail.json <- fromJSON(franchise_detail.text, flatten=TRUE)
+franchise_detail.json
+```
+
+## NHL stats API
+```{r}
+team_stats <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=team.stats")
+team_stats.text <- content(team_stats, "text")
+team_stats.json <- fromJSON(team_stats.text, flatten=TRUE)
+team_stats.json
+```

@@ -1,7 +1,9 @@
 ---
-title: "Project1-LucyYin"
+title: "Project1"
+author: "Lucy Yin"
+date: "6/8/2021"
 output: 
- github_document:
+ html_document:
   toc: true
   toc_depth: 2
 ---
@@ -10,24 +12,164 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## GitHub Documents
-
-This is an R Markdown format used for publishing markdown documents to GitHub. When you click the **Knit** button all R code chunks are run and a markdown file (.md) suitable for publishing to GitHub is generated.
-
-## Including Code
-
-You can include R code in the document as follows:
-
-```{r cars}
-summary(cars)
+## Install and load required packages
+```{r}
+library(httr)
+library(jsonlite)
+library(tidyverse)
+library(knitr)
+library(haven)
+library(qwraps2)
+library(rmarkdown)
 ```
 
-## Including Plots
+## NHL records API
+```{r NHL records API}
+get.records <- function(table.name, id=NULL, most.recent.id=NULL, ...) {
+  base.url <- "https://records.nhl.com/site/api"
+  
+  if (!is.null(table.name)) {  ## has a table name
+    if (table.name %in% ("franchise") & (!is.null(id)) | (!is.null(most.recent.id))) {  ## table name is this one and given id
+      return ("The table selected cannot be returned with the specified ID and or most recent team ID input.")
+    }  
+    
+    if (is.null(id) & is.null(most.recent.id)) {  ## has table name but no id or most recent team id
+      full.url <- paste0(base.url, "/", table.name)
+    }
+    
+    if (table.name %in% c("franchise-team-totals",
+                          "franchise-season-records", 
+                          "franchise-goalie-records", 
+                          "franchise-skater-records") & (!is.null(id)) & (is.null(most.recent.id))) {  ## table name is one of the 4 and given id
+      full.url <- paste0(base.url, "/", table.name, "?cayenneExp=franchiseId=", id)
+    }
+    
+    if (table.name %in% c("franchise-team-totals",
+                          "franchise-season-records", 
+                          "franchise-goalie-records", 
+                          "franchise-skater-records") & (!is.null(id)) & (!is.null(most.recent.id))){  ## table name is one of the 4 and given id and given most.recent id
+      return (("Only ID and table name are used, please delete most recent team ID entry."))
+    }
+    
+    if (table.name %in% c("franchise-team-totals",
+                          "franchise-season-records", 
+                          "franchise-goalie-records", 
+                          "franchise-skater-records") & (is.null(id)) & (!is.null(most.recent.id))){  ## table name is one of the 4 and only given most.recent id
+      return (("Only ID and table name are used, please delete most recent team ID and try using ID instead."))
+    }    
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+    if (table.name %in% ("franchise-detail") & (is.null(id)) & (!is.null(most.recent.id))) {  ## table name is this one and given most recent id
+      full.url <- paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id)
+    }
+    
+    if (table.name %in% ("franchise-detail") & (!is.null(id)) & (!is.null(most.recent.id))) {  ## table name is this one and given most recent id and id
+      return ("Only most recent team ID and table name are used, please delete ID entry.")
+    }
+    
+    if (table.name %in% ("franchise-detail") & (!is.null(id)) & (is.null(most.recent.id))) {  ## table name is this one and given only id
+      return ("Please provide the most recent team ID to get results.")
+    }  
+  
+    nfl.records <- GET(full.url)
+    nfl.records.txt <- content(nfl.records, "text")  ## convert to JSON text form
+    nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
+    
+    return (nfl.records.json$data)
+    
+  }
+  
+  else {  ## if no table name
+    return ("Table name is invalid.")
+  }
+}
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+test different scenarios
+```{r}
+#get.records(id=23)
+#get.records("franchise-team-totals", 26, 3)
+#get.records("franchise-detail", id=23, most.recent.id = 23)
+#get.records("franchise-detail", most.recent.id = 23)
+
+```
+
+## NHL stats API
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+```{r}
+franchise <- GET("https://records.nhl.com/site/api/franchise")
+franchise.text <- content(franchise, "text")
+franchise.json <- fromJSON(franchise.text, flatten=TRUE)
+franchise.json$data
+```
+
+```{r}
+team.id.index <- franchise.json$data %>% select("id", "mostRecentTeamId", "fullName", "teamAbbrev", "teamCommonName", "teamPlaceName")
+team.id.index
+```
+
+```{r}
+franchise_team_totals <- GET("https://records.nhl.com/site/api/franchise-team-totals")
+franchise_team_totals.text <- content(franchise_team_totals, "text")
+franchise_team_totals.json <- fromJSON(franchise_team_totals.text, flatten=TRUE)
+franchise_team_totals.json$data
+```
+
+```{r}
+franchise_team_totals2 <- GET("https://records.nhl.com/site/api/franchise-team-totals?cayenneExp=franchiseId=26")
+franchise_team_totals2.text <- content(franchise_team_totals2, "text")
+franchise_team_totals2.json <- fromJSON(franchise_team_totals2.text, flatten=TRUE)
+franchise_team_totals2.json$data
+```
+
+
+
+```{r}
+franchise_season <- GET("https://records.nhl.com/site/api/franchise-season-records?cayenneExp=franchiseId=26")
+franchise_season.text <- content(franchise_season, "text")
+franchise_season.json <- fromJSON(franchise_season.text, flatten=TRUE)
+franchise_season.json$data
+```
+
+```{r}
+franchise_goalie <- GET("https://records.nhl.com/site/api/franchise-goalie-records?cayenneExp=franchiseId=26")
+franchise_goalie.text <- content(franchise_goalie, "text")
+franchise_goalie.json <- fromJSON(franchise_goalie.text, flatten=TRUE)
+franchise_goalie.json$data
+```
+
+```{r}
+franchise_skater <- GET("https://records.nhl.com/site/api/franchise-skater-records?cayenneExp=franchiseId=26")
+franchise_skater.text <- content(franchise_skater, "text")
+franchise_skater.json <- fromJSON(franchise_skater.text, flatten=TRUE)
+franchise_skater.json$data
+```
+
+```{r}
+franchise_detail <- GET("https://records.nhl.com/site/api/franchise-detail?cayenneExp=mostRecentTeamId=26")
+franchise_detail.text <- content(franchise_detail, "text")
+franchise_detail.json <- fromJSON(franchise_detail.text, flatten=TRUE)
+franchise_detail.json$data
+```
+
+## NHL stats API
+```{r}
+team_stats <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=team.stats")
+team_stats.text <- content(team_stats, "text")
+team_stats.json <- fromJSON(team_stats.text, flatten=TRUE)
+team_stats.json$teams
+```
+
+```{r}
+team_stats2 <- GET("https://statsapi.web.nhl.com/api/v1/teams/26?expand=team.stats")
+team_stats2.text <- content(team_stats2, "text")
+team_stats2.json <- fromJSON(team_stats2.text, flatten=TRUE)
+team_stats2.json$teams
+```
