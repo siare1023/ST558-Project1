@@ -29,11 +29,11 @@ get.records <- function(table.name, id=NULL, most.recent.id=NULL, ...) {
   base.url <- "https://records.nhl.com/site/api"
   
   if (!is.null(table.name)) {  ## has a table name
-    if (table.name %in% ("franchise") & (!is.null(id)) | (!is.null(most.recent.id))) {  ## table name is this one and given id
+    if (table.name %in% ("franchise") & ((!is.null(id)) | (!is.null(most.recent.id)))) {  ## table name is this one and given id
       return ("The table selected cannot be returned with the specified ID and or most recent team ID input.")
     }  
     
-    if (is.null(id) & is.null(most.recent.id)) {  ## has table name but no id or most recent team id
+    if (is.null(id) & is.null(most.recent.id)) {  ## has table name but no id no most recent team id
       full.url <- paste0(base.url, "/", table.name)
     }
     
@@ -200,13 +200,68 @@ get.stat2 <- function(modifier, most.recent.id=NULL, season=NULL, most.recent.id
 ```
 
 try out function
-```{r testing stats}
+```{r testing stat}
 get.stat2("team.roster&season", 12, 20142015)
 get.stat2("team.roster&season", NULL, 20142015)
 get.stat2("person.names")
+get.stat2("teamId", most.recent.id = 12, most.recent.id2 = 21)
 
 ```
+## Wrapper Function
+```{r wrapper}
+get.nhl.data <- function (table.name=NULL, modifier=NULL, id=NULL, most.recent.id=NULL, season=NULL, ...) {
+  # yes table name, yes modifier
+  if (!is.null(table.name) & !is.null(modifier)) {
+    stop ("Cannot use both table name and modifier to get back information.")
+  }
+  
+  # yes table name
+  else if (!is.null(table.name) & is.null(id) & is.null(modifier)) {
+    output <- get.records(table.name)
+  }  
+  
+  # yes table name, yes id, no modifier
+  else if (!is.null(table.name) & !is.null(id) & is.null(modifier)) {
+    output <- get.records(table.name, id)
+  }
+  
+  # yes table name, yes most recent id, no modifier
+  else if (!is.null(table.name) & !is.null(most.recent.id) & is.null(modifier)) {
+    output <- get.records(table.name, most.recent.id)
+  }
+  
+  else if (!is.null(table.name) & !is.null(id) & !is.null(most.recent.id))
+    return("Only ID and table name are used, please delete most recent team ID entry.")
+  
+  # yes modifier
+  else if (!is.null(modifier) & is.null(table.name) & is.null(most.recent.id)) {
+    output <- get.stat2(modifier)
+  }
+  
+  # yes modifier, yes most recent id
+  else if (!is.null(modifier) & is.null(table.name) & !is.null(most.recent.id)) {
+    output <- get.stat2(modifier, most.recent.id)
+  }
+  
+  # yes modifier, yes season
+  else if (!is.null(modifier) & is.null(table.name) & !is.null(season)) {
+    output <- get.stat2(modifier, season)
+  }
+  
+  # yes modifier, yes multiple most recent id
+  else if (!is.null(modifier) & is.null(table.name) & !is.null(most.recent.id) & !is.null(most.recent.id2)) {
+    output <- get.stat2(modifier, most.recent.id, most.recent.id2, most.recent.id3, most.recent.id4)
+  }
+  
+  return(output)
+}
+```
 
+```{r}
+get.nhl.data(table.name = "franchise-team-totals")  ## only id used
+get.nhl.data(modifier = "person.names", most.recent.id = 12, season = 20142015)
+
+```
 
 
 ## Individual tables for reference 
@@ -215,6 +270,7 @@ franchise <- GET("https://records.nhl.com/site/api/franchise")
 franchise.text <- content(franchise, "text")
 franchise.json <- fromJSON(franchise.text, flatten=TRUE)
 franchise.json$data
+write.csv(franchise.json$data,"franchise.csv", row.names = FALSE)
 ```
 
 ```{r team id index}
@@ -223,10 +279,12 @@ team.id.index
 ```
 
 ```{r team totals}
-franchise_team_totals <- GET("https://records.nhl.com/site/api/franchise-team-totals?cayenneExp=franchiseId=26")
+franchise_team_totals <- GET("https://records.nhl.com/site/api/franchise-team-totals")
 franchise_team_totals.text <- content(franchise_team_totals, "text")
 franchise_team_totals.json <- fromJSON(franchise_team_totals.text, flatten=TRUE)
 franchise_team_totals.json$data
+write.csv(franchise_team_totals.json$data,"franchise-team-total.csv", row.names = FALSE)
+
 ```
 
 ```{r team totals id}
@@ -243,6 +301,8 @@ franchise_season <- GET("https://records.nhl.com/site/api/franchise-season-recor
 franchise_season.text <- content(franchise_season, "text")
 franchise_season.json <- fromJSON(franchise_season.text, flatten=TRUE)
 franchise_season.json$data
+write.csv(franchise_season.json$data,"franchise-season-records.csv", row.names = FALSE)
+
 ```
 
 ```{r goalie}
@@ -250,6 +310,8 @@ franchise_goalie <- GET("https://records.nhl.com/site/api/franchise-goalie-recor
 franchise_goalie.text <- content(franchise_goalie, "text")
 franchise_goalie.json <- fromJSON(franchise_goalie.text, flatten=TRUE)
 franchise_goalie.json$data
+write.csv(franchise_goalie.json$data,"franchise-goalie-records.csv", row.names = FALSE)
+
 ```
 
 ```{r skater}
@@ -257,6 +319,8 @@ franchise_skater <- GET("https://records.nhl.com/site/api/franchise-skater-recor
 franchise_skater.text <- content(franchise_skater, "text")
 franchise_skater.json <- fromJSON(franchise_skater.text, flatten=TRUE)
 franchise_skater.json$data
+write.csv(franchise_skater.json$data,"franchise-skater-records.csv", row.names = FALSE)
+
 ```
 
 ```{r franchise detail}
@@ -264,9 +328,41 @@ franchise_detail <- GET("https://records.nhl.com/site/api/franchise-detail?cayen
 franchise_detail.text <- content(franchise_detail, "text")
 franchise_detail.json <- fromJSON(franchise_detail.text, flatten=TRUE)
 franchise_detail.json$data
+write.csv(franchise_detail.json$data,"franchise-details.csv", row.names = FALSE)
+
 ```
 
 ## NHL stats API
+
+```{r team roster}
+team_roster <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=team.roster")
+team_roster.text <- content(team_roster, "text")
+team_roster.json <- fromJSON(team_roster.text, flatten=TRUE)
+team_roster.json$teams
+#write.csv(team_roster.json$teams,"team-roster.csv", row.names = FALSE)
+```
+
+```{r person names}
+person.names <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=person.names")
+person.names.text <- content(person.names, "text")
+person.names.json <- fromJSON(person.names.text, flatten=TRUE)
+person.names.json$teams
+```
+
+```{r schedule next}
+schedule.next <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=team.schedule.next")
+schedule.next.text <- content(schedule.next, "text")
+schedule.next.json <- fromJSON(schedule.next.text, flatten=TRUE)
+schedule.next.json$teams
+```
+
+```{r schedule previous}
+schedule.prev <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=team.schedule.previous")
+schedule.prev.text <- content(schedule.prev, "text")
+schedule.prev.json <- fromJSON(schedule.prev.text, flatten=TRUE)
+schedule.prev.json$teams
+```
+
 ```{r team stats}
 team_stats <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=team.stats")
 team_stats.text <- content(team_stats, "text")
@@ -281,11 +377,11 @@ team_stats.id.json <- fromJSON(team_stats.id.text, flatten=TRUE)
 team_stats.id.json$teams
 ```
 
-```{r person names}
-person.names <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=person.names")
-person.names.text <- content(person.names, "text")
-person.names.json <- fromJSON(person.names.text, flatten=TRUE)
-person.names.json$teams
+```{r roster season}
+roster.season <- GET("https://statsapi.web.nhl.com/api/v1/teams?expand=team.roster&season=20142015")
+roster.season.text <- content(roster.season, "text")
+roster.season.json <- fromJSON(roster.season.text, flatten=TRUE)
+roster.season.json$teams
 ```
 
 ```{r teamId}
@@ -294,9 +390,10 @@ teamId.text <- content(teamId, "text")
 teamId.json <- fromJSON(teamId.text, flatten=TRUE)
 teamId.json$teams
 ```
-```{r season stat}
-team.season <- GET("https://statsapi.web.nhl.com/api/v1/teams/12?expand=team.roster&season=20142015")
-team.season.text <- content(team.season, "text")
-team.season.json <- fromJSON(team.season.text, flatten=TRUE)
-team.season.json$teams
+
+```{r single season}
+single.season <- GET("https://statsapi.web.nhl.com/api/v1/teams?stats=statsSingleSeasonPlayoffs")
+single.season.text <- content(single.season, "text")
+single.season.json <- fromJSON(single.season.text, flatten=TRUE)
+single.season.json$teams
 ```
