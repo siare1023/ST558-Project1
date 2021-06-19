@@ -3,6 +3,19 @@ proj 1
 Lucy Yin
 6/8/2021
 
+-   [Install and load required
+    packages](#install-and-load-required-packages)
+-   [NHL records API](#nhl-records-api)
+-   [NHL stats API](#nhl-stats-api)
+-   [Wrapper Function](#wrapper-function)
+-   [Grabbing data and analyzing](#grabbing-data-and-analyzing)
+-   [Create new variables](#create-new-variables)
+-   [Read data from 2 different API’s and
+    combine](#read-data-from-2-different-apis-and-combine)
+-   [Read data from 2 different API’s](#read-data-from-2-different-apis)
+-   [Contingency Tables](#contingency-tables)
+-   [Plots](#plots)
+
 ## Install and load required packages
 
 ``` r
@@ -11,22 +24,41 @@ library(jsonlite)
 library(tidyverse)
 library(knitr)
 library(haven)
-#install.packages("qwraps2")
 library(qwraps2)
 library(rmarkdown)
 library(data.table)
 library(kableExtra)
+library(xml2)
 ```
 
 ## NHL records API
 
 ``` r
-# map id and team names
+# map id, team names and most recent id
 franchise.url <- GET("https://records.nhl.com/site/api/franchise")
 franchise.txt <- content(franchise.url, "text", encoding = "UTF-8")
 franchise.json <- fromJSON(franchise.txt, flatten=TRUE)
 franchise.list <- franchise.json$data %>% as.data.frame()
 franchise.tbl <- tibble(franchise.list$id, franchise.list$teamCommonName, franchise.list$fullName, franchise.list$mostRecentTeamId)
+franchise.tbl
+```
+
+    ## # A tibble: 39 x 4
+    ##    `franchise.list$id` `franchise.list$teamCommonName` `franchise.list$fullName` `franchise.list$mostRecentTeamId`
+    ##                  <int> <chr>                           <chr>                                                 <int>
+    ##  1                   1 Canadiens                       Montréal Canadiens                                        8
+    ##  2                   2 Wanderers                       Montreal Wanderers                                       41
+    ##  3                   3 Eagles                          St. Louis Eagles                                         45
+    ##  4                   4 Tigers                          Hamilton Tigers                                          37
+    ##  5                   5 Maple Leafs                     Toronto Maple Leafs                                      10
+    ##  6                   6 Bruins                          Boston Bruins                                             6
+    ##  7                   7 Maroons                         Montreal Maroons                                         43
+    ##  8                   8 Americans                       Brooklyn Americans                                       51
+    ##  9                   9 Quakers                         Philadelphia Quakers                                     39
+    ## 10                  10 Rangers                         New York Rangers                                          3
+    ## # … with 29 more rows
+
+``` r
 name.id.list <- franchise.tbl$`franchise.list$teamCommonName`
 id.most.recent.id.list <- franchise.tbl$`franchise.list$mostRecentTeamId`
 ```
@@ -63,6 +95,11 @@ get.records <- function(table.name, id=NULL, team.common.name=NULL, ...) {
     
     else if (is.null(id)) {  ## has table name but no id
       full.url <- paste0(base.url, "/", table.name)
+      
+      nfl.records <- GET(full.url)
+      nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
+      return (nfl.records.json$data %>% as_tibble())
     }
     
     else if (table.name %in% c("franchise-team-totals",
@@ -71,20 +108,43 @@ get.records <- function(table.name, id=NULL, team.common.name=NULL, ...) {
                                "franchise-skater-records") & 
              (is.numeric(id))) {  ## table name is one of the 4 and given id
       full.url <- paste0(base.url, "/", table.name, "?cayenneExp=franchiseId=", id)
+      nfl.records <- GET(full.url)
+      nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
+      return (nfl.records.json$data %>% as_tibble())
     }
-
+    
+    ## table name is this, id is one of the 8 (because these results don't return html content)
     else if (table.name %in% ("franchise-detail") & 
-             (is.numeric(id))) {  ## table name is this one and given id which converts to most.recent.id
-      full.url <- paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id)
+             (id %in% c(2:4, 7:9, 13, 39))) {
+      nfl.records.details <- GET(paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id))
+      nfl.records.details.txt <- content(nfl.records.details, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.details.json <- fromJSON(nfl.records.details.txt, flatten=TRUE)  ## convert to list  
+      return (nfl.records.details.json$data %>% as_tibble())
     }
     
-  
-    nfl.records <- GET(full.url)
-    nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
-    nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
-    
-    return (nfl.records.json$data)
-    
+    ## table name is this, id is one of the 31 (these tibbles contain html content, further parse out html)
+    else if (table.name %in% ("franchise-detail") & 
+             (is.numeric(id) %in% c(1, 5 ,6, 10:12, 14:38))) {  ## table name is this one and given id which converts to most.recent.id
+      nfl.records.details <- GET(paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id))
+      nfl.records.details.txt <- content(nfl.records.details, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.details.json <- fromJSON(nfl.records.details.txt, flatten=TRUE)  ## convert to list
+      fran.details <- nfl.records.details.json$data
+      
+      ## these columns contain html content, save as separate vectors
+      txt.string1 <- fran.details$captainHistory
+      txt.string2 <- fran.details$coachingHistory
+      txt.string3 <- fran.details$generalManagerHistory
+      txt.string4 <- fran.details$retiredNumbersSummary
+      
+      ## delete the original columns of html content, then add parsed html content back to table
+      fran.details <- fran.details %>% select(-c(3,4,8,11))
+      fran.details$captainHistory <- read_html(txt.string1) %>% xml_text()
+      fran.details$coachingHistory <- read_html(txt.string2) %>% xml_text()
+      fran.details$generalManagerHistory <- read_html(txt.string3) %>% xml_text()
+      fran.details$retiredNumbersSummary <- read_html(txt.string4) %>% xml_text()
+      return (fran.details)
+    }
   }
   
   else {  ## if no table name
@@ -98,7 +158,8 @@ test different scenarios
 ``` r
 #get.records("franchise-goalie-records")
 #get.records("franchise-goalie-records", team.common.name = "Eagles")
-#get.records("franchise-detail", team.common.name = "Eagles")
+#get.records("franchise-detail", team.common.name = "Hurricanes")
+#get.records("franchise-detail", id=39)
 #get.records("franchise-team-totals", 26)
 #get.records("franchise-detail", id=23)
 #get.records("franchise-detail")
@@ -199,7 +260,7 @@ get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NU
   nfl.stats3.txt <- content(nfl.stats3, "text", encoding = "UTF-8")
   nfl.stats3.json<- fromJSON(nfl.stats3.txt, flatten=TRUE)
     
-  return (nfl.stats3.json$teams %>% unnest(everything()) %>% unnest(everything()))
+  return (nfl.stats3.json$teams %>% unnest(everything()) %>% unnest(everything()) %>% as_tibble())
 
 }
 ```
@@ -267,6 +328,25 @@ get.nhl.data <- function (table.name=NULL,
 ```
 
 ``` r
+get.nhl.data(table.name = "franchise-detail")
+```
+
+    ## # A tibble: 39 x 13
+    ##       id active captainHistory  coachingHistory  dateAwarded  directoryUrl firstSeasonId generalManagerH… heroImageUrl mostRecentTeamId
+    ##    <int> <lgl>  <chr>           <chr>            <chr>        <chr>                <int> <chr>            <chr>                   <int>
+    ##  1     1 TRUE   "<ul class=\"s… "<ul class=\"st… 1917-11-26T… https://www…      19171918 "<ul class=\"st… https://rec…                8
+    ##  2     2 FALSE   <NA>            <NA>            1917-11-26T… <NA>              19171918  <NA>            https://rec…               41
+    ##  3     3 FALSE   <NA>            <NA>            1917-11-26T… <NA>              19171918  <NA>            https://rec…               45
+    ##  4     4 FALSE   <NA>            <NA>            1917-11-26T… <NA>              19191920  <NA>            https://rec…               37
+    ##  5     5 TRUE   "<ul class=\"s… "<ul class=\"st… 1917-11-26T… https://www…      19171918 "<ul class=\"st… https://rec…               10
+    ##  6     6 TRUE   "<ul class=\"s… "<ul class=\"st… 1924-11-01T… https://www…      19241925 "<ul class=\"st… https://rec…                6
+    ##  7     7 FALSE   <NA>            <NA>            1924-11-01T… <NA>              19241925  <NA>            https://rec…               43
+    ##  8     8 FALSE   <NA>            <NA>            1925-09-22T… <NA>              19251926  <NA>            https://rec…               51
+    ##  9     9 FALSE   <NA>            <NA>            1925-11-07T… <NA>              19251926  <NA>            https://rec…               39
+    ## 10    10 TRUE   "<ul class=\"s… "<ul class=\"st… 1926-05-15T… https://www…      19261927 "<ul class=\"st… https://rec…                3
+    ## # … with 29 more rows, and 3 more variables: retiredNumbersSummary <chr>, teamAbbrev <chr>, teamFullName <chr>
+
+``` r
 #get.nhl.data(table.name = "franchise-team-totals")
 #get.nhl.data(modifier = "person.names", id = 26, season = 20142015)
 #get.nhl.data(modifier = "team.stats", id = 26)
@@ -291,38 +371,27 @@ common.names.dv <- intersect(names(team.total), names(division))
 ``` r
 # combine the 2 tables together using "franchiseId" as index
 new.data <- left_join(team.total, division, by="franchiseId")
-
-head(new.data)
+new.data
 ```
 
-    ##   activeFranchise gameTypeId lastSeasonId id firstSeasonId franchiseId gamesPlayed goalsAgainst goalsFor homeLosses homeOvertimeLosses
-    ## 1               1          2           NA  1      19821983          23        2993         8902     8792        525                 85
-    ## 2               1          2           NA  1      19821983          23        2993         8902     8792        525                 85
-    ## 3               1          2           NA  3      19721973          22        3788        11907    12045        678                 84
-    ## 4               1          2           NA  3      19721973          22        3788        11907    12045        678                 84
-    ## 5               1          2           NA  5      19261927          10        6560        20020    20041       1143                 76
-    ## 6               1          2           NA  5      19261927          10        6560        20020    20041       1143                 76
-    ##   homeTies homeWins losses overtimeLosses penaltyMinutes pointPctg points roadLosses roadOvertimeLosses roadTies roadWins
-    ## 1       96      790   1211            169          44773    0.5306   3176        686                 84      123      604
-    ## 2       96      790   1211            169          44773    0.5306   3176        686                 84      123      604
-    ## 3      170      963   1587            166          57792    0.5133   3889        909                 82      177      725
-    ## 4      170      963   1587            166          57792    0.5133   3889        909                 82      177      725
-    ## 5      448     1614   2716            153          86129    0.5127   6727       1573                 77      360     1269
-    ## 6      448     1614   2716            153          86129    0.5127   6727       1573                 77      360     1269
-    ##   shootoutLosses shootoutWins shutouts teamId         teamName.x ties abbreviation.x wins               name abbreviation.y teamName.y
-    ## 1             84           78      196      1  New Jersey Devils  219            NJD 1394  New Jersey Devils            NJD     Devils
-    ## 2             84           78      196      1  New Jersey Devils  219            NJD 1394  New Jersey Devils            NJD     Devils
-    ## 3             70           86      177      2 New York Islanders  347            NYI 1688 New York Islanders            NYI  Islanders
-    ## 4             70           86      177      2 New York Islanders  347            NYI 1688 New York Islanders            NYI  Islanders
-    ## 5             68           79      408      3   New York Rangers  808            NYR 2883   New York Rangers            NYR    Rangers
-    ## 6             68           79      408      3   New York Rangers  808            NYR 2883   New York Rangers            NYR    Rangers
-    ##                          venue.name venue.city division.id   division.name conference.id conference.name
-    ## 1                 Prudential Center     Newark          25 MassMutual East             6         Eastern
-    ## 2                 Prudential Center     Newark          25 MassMutual East             6         Eastern
-    ## 3 Nassau Veterans Memorial Coliseum  Uniondale          25 MassMutual East             6         Eastern
-    ## 4 Nassau Veterans Memorial Coliseum  Uniondale          25 MassMutual East             6         Eastern
-    ## 5             Madison Square Garden   New York          25 MassMutual East             6         Eastern
-    ## 6             Madison Square Garden   New York          25 MassMutual East             6         Eastern
+    ## # A tibble: 62 x 39
+    ##    activeFranchise gameTypeId lastSeasonId    id firstSeasonId franchiseId gamesPlayed goalsAgainst goalsFor homeLosses
+    ##              <int>      <int>        <int> <int>         <int>       <int>       <int>        <int>    <int>      <int>
+    ##  1               1          2           NA     1      19821983          23        2993         8902     8792        525
+    ##  2               1          2           NA     1      19821983          23        2993         8902     8792        525
+    ##  3               1          2           NA     3      19721973          22        3788        11907    12045        678
+    ##  4               1          2           NA     3      19721973          22        3788        11907    12045        678
+    ##  5               1          2           NA     5      19261927          10        6560        20020    20041       1143
+    ##  6               1          2           NA     5      19261927          10        6560        20020    20041       1143
+    ##  7               1          2           NA     8      19671968          16        4171        12255    13690        584
+    ##  8               1          2           NA     8      19671968          16        4171        12255    13690        584
+    ##  9               1          2           NA     9      19671968          17        4171        14049    13874        683
+    ## 10               1          2           NA     9      19671968          17        4171        14049    13874        683
+    ## # … with 52 more rows, and 29 more variables: homeOvertimeLosses <int>, homeTies <int>, homeWins <int>, losses <int>,
+    ## #   overtimeLosses <int>, penaltyMinutes <int>, pointPctg <dbl>, points <int>, roadLosses <int>, roadOvertimeLosses <int>,
+    ## #   roadTies <int>, roadWins <int>, shootoutLosses <int>, shootoutWins <int>, shutouts <int>, teamId <int>, teamName.x <chr>,
+    ## #   ties <int>, abbreviation.x <chr>, wins <int>, name <chr>, abbreviation.y <chr>, teamName.y <chr>, venue.name <chr>,
+    ## #   venue.city <chr>, division.id <int>, division.name <chr>, conference.id <int>, conference.name <chr>
 
 ## Create new variables
 
@@ -345,44 +414,28 @@ new.data$perc.road.win <- (new.data$roadWins / (new.data$roadLosses + new.data$r
 # % of losses from road games
 new.data$perc.road.loss <- (new.data$roadLosses / (new.data$roadLosses + new.data$roadOvertimeLosses + new.data$roadTies + new.data$roadWins) *100) %>% round(2)
 
-head(new.data)
+new.data
 ```
 
-    ##   activeFranchise gameTypeId lastSeasonId id firstSeasonId franchiseId gamesPlayed goalsAgainst goalsFor homeLosses homeOvertimeLosses
-    ## 1               1          2           NA  1      19821983          23        2993         8902     8792        525                 85
-    ## 2               1          2           NA  1      19821983          23        2993         8902     8792        525                 85
-    ## 3               1          2           NA  3      19721973          22        3788        11907    12045        678                 84
-    ## 4               1          2           NA  3      19721973          22        3788        11907    12045        678                 84
-    ## 5               1          2           NA  5      19261927          10        6560        20020    20041       1143                 76
-    ## 6               1          2           NA  5      19261927          10        6560        20020    20041       1143                 76
-    ##   homeTies homeWins losses overtimeLosses penaltyMinutes pointPctg points roadLosses roadOvertimeLosses roadTies roadWins
-    ## 1       96      790   1211            169          44773    0.5306   3176        686                 84      123      604
-    ## 2       96      790   1211            169          44773    0.5306   3176        686                 84      123      604
-    ## 3      170      963   1587            166          57792    0.5133   3889        909                 82      177      725
-    ## 4      170      963   1587            166          57792    0.5133   3889        909                 82      177      725
-    ## 5      448     1614   2716            153          86129    0.5127   6727       1573                 77      360     1269
-    ## 6      448     1614   2716            153          86129    0.5127   6727       1573                 77      360     1269
-    ##   shootoutLosses shootoutWins shutouts teamId         teamName.x ties abbreviation.x wins               name abbreviation.y teamName.y
-    ## 1             84           78      196      1  New Jersey Devils  219            NJD 1394  New Jersey Devils            NJD     Devils
-    ## 2             84           78      196      1  New Jersey Devils  219            NJD 1394  New Jersey Devils            NJD     Devils
-    ## 3             70           86      177      2 New York Islanders  347            NYI 1688 New York Islanders            NYI  Islanders
-    ## 4             70           86      177      2 New York Islanders  347            NYI 1688 New York Islanders            NYI  Islanders
-    ## 5             68           79      408      3   New York Rangers  808            NYR 2883   New York Rangers            NYR    Rangers
-    ## 6             68           79      408      3   New York Rangers  808            NYR 2883   New York Rangers            NYR    Rangers
-    ##                          venue.name venue.city division.id   division.name conference.id conference.name perc.total.games.win
-    ## 1                 Prudential Center     Newark          25 MassMutual East             6         Eastern                46.58
-    ## 2                 Prudential Center     Newark          25 MassMutual East             6         Eastern                46.58
-    ## 3 Nassau Veterans Memorial Coliseum  Uniondale          25 MassMutual East             6         Eastern                44.56
-    ## 4 Nassau Veterans Memorial Coliseum  Uniondale          25 MassMutual East             6         Eastern                44.56
-    ## 5             Madison Square Garden   New York          25 MassMutual East             6         Eastern                43.95
-    ## 6             Madison Square Garden   New York          25 MassMutual East             6         Eastern                43.95
-    ##   perc.total.games.loss perc.home.win perc.home.loss perc.road.win perc.road.loss
-    ## 1                 40.46         52.81          35.09         40.35          45.82
-    ## 2                 40.46         52.81          35.09         40.35          45.82
-    ## 3                 41.90         50.82          35.78         38.30          48.02
-    ## 4                 41.90         50.82          35.78         38.30          48.02
-    ## 5                 41.40         49.19          34.84         38.70          47.97
-    ## 6                 41.40         49.19          34.84         38.70          47.97
+    ## # A tibble: 62 x 45
+    ##    activeFranchise gameTypeId lastSeasonId    id firstSeasonId franchiseId gamesPlayed goalsAgainst goalsFor homeLosses
+    ##              <int>      <int>        <int> <int>         <int>       <int>       <int>        <int>    <int>      <int>
+    ##  1               1          2           NA     1      19821983          23        2993         8902     8792        525
+    ##  2               1          2           NA     1      19821983          23        2993         8902     8792        525
+    ##  3               1          2           NA     3      19721973          22        3788        11907    12045        678
+    ##  4               1          2           NA     3      19721973          22        3788        11907    12045        678
+    ##  5               1          2           NA     5      19261927          10        6560        20020    20041       1143
+    ##  6               1          2           NA     5      19261927          10        6560        20020    20041       1143
+    ##  7               1          2           NA     8      19671968          16        4171        12255    13690        584
+    ##  8               1          2           NA     8      19671968          16        4171        12255    13690        584
+    ##  9               1          2           NA     9      19671968          17        4171        14049    13874        683
+    ## 10               1          2           NA     9      19671968          17        4171        14049    13874        683
+    ## # … with 52 more rows, and 35 more variables: homeOvertimeLosses <int>, homeTies <int>, homeWins <int>, losses <int>,
+    ## #   overtimeLosses <int>, penaltyMinutes <int>, pointPctg <dbl>, points <int>, roadLosses <int>, roadOvertimeLosses <int>,
+    ## #   roadTies <int>, roadWins <int>, shootoutLosses <int>, shootoutWins <int>, shutouts <int>, teamId <int>, teamName.x <chr>,
+    ## #   ties <int>, abbreviation.x <chr>, wins <int>, name <chr>, abbreviation.y <chr>, teamName.y <chr>, venue.name <chr>,
+    ## #   venue.city <chr>, division.id <int>, division.name <chr>, conference.id <int>, conference.name <chr>, perc.total.games.win <dbl>,
+    ## #   perc.total.games.loss <dbl>, perc.home.win <dbl>, perc.home.loss <dbl>, perc.road.win <dbl>, perc.road.loss <dbl>
 
 ``` r
 #write_csv(new.data, "new.data.csv")
@@ -393,100 +446,51 @@ head(new.data)
 ``` r
 # read from goalie records endpoint for hurricanes
 goalie.records <- get.nhl.data(table.name = "franchise-goalie-records", id = 26)
-head(goalie.records)
+goalie.records
 ```
 
-    ##    id activePlayer firstName franchiseId       franchiseName gameTypeId gamesPlayed    lastName losses
-    ## 1 336        FALSE       Tom          26 Carolina Hurricanes          2          34    Barrasso     12
-    ## 2 363        FALSE   Richard          26 Carolina Hurricanes          2           6     Brodeur      2
-    ## 3 369        FALSE      Sean          26 Carolina Hurricanes          2         256       Burke    120
-    ## 4 411        FALSE      Mark          26 Carolina Hurricanes          2           3 Fitzpatrick      2
-    ## 5 425        FALSE      John          26 Carolina Hurricanes          2         122     Garrett     57
-    ## 6 430        FALSE     Mario          26 Carolina Hurricanes          2          23    Gosselin     13
-    ##                            mostGoalsAgainstDates mostGoalsAgainstOneGame mostSavesDates mostSavesOneGame  mostShotsAgainstDates
-    ## 1             2001-12-30, 2001-12-18, 2001-11-29                       5     2001-12-10               40             2001-12-10
-    ## 2                                     1988-03-09                       4     1988-04-03               31             1988-04-03
-    ## 3                                     1992-12-11                       9     1994-01-01               51 1996-01-27, 1994-01-01
-    ## 4                                     2000-02-15                       5     2000-02-15               40             2000-02-15
-    ## 5 1982-01-02, 1980-10-11, 1980-03-08, 1980-02-26                       9     1981-02-14               50             1981-02-14
-    ## 6                         1993-04-10, 1993-03-24                       6     1993-03-22               45             1993-03-22
-    ##   mostShotsAgainstOneGame mostShutoutsOneSeason        mostShutoutsSeasonIds mostWinsOneSeason mostWinsSeasonIds overtimeLosses
-    ## 1                      43                     2                     20012002                13          20012002             NA
-    ## 2                      34                     0                     19871988                 4          19871988             NA
-    ## 3                      54                     4           19951996, 19961997                28          19951996             NA
-    ## 4                      45                     0                     19992000                 0          19992000             NA
-    ## 5                      57                     0 19791980, 19801981, 19811982                16          19791980             NA
-    ## 6                      50                     0           19921993, 19931994                 5          19921993             NA
-    ##   playerId positionCode rookieGamesPlayed rookieShutouts rookieWins seasons shutouts ties wins
-    ## 1  8445275            G                NA             NA         NA       1        2    5   13
-    ## 2  8445694            G                NA             NA         NA       1        0    0    4
-    ## 3  8445769            G                NA             NA         NA       6       10   24  100
-    ## 4  8446829            G                NA             NA         NA       1        0    0    0
-    ## 5  8447066            G                NA             NA         NA       3        0   27   36
-    ## 6  8447303            G                NA             NA         NA       2        0    1    5
+    ## # A tibble: 38 x 29
+    ##       id activePlayer firstName franchiseId franchiseName  gameTypeId gamesPlayed lastName  losses mostGoalsAgainstDa… mostGoalsAgains…
+    ##    <int> <lgl>        <chr>           <int> <chr>               <int>       <int> <chr>      <int> <chr>                          <int>
+    ##  1   336 FALSE        Tom                26 Carolina Hurr…          2          34 Barrasso      12 2001-12-30, 2001-1…                5
+    ##  2   363 FALSE        Richard            26 Carolina Hurr…          2           6 Brodeur        2 1988-03-09                         4
+    ##  3   369 FALSE        Sean               26 Carolina Hurr…          2         256 Burke        120 1992-12-11                         9
+    ##  4   411 FALSE        Mark               26 Carolina Hurr…          2           3 Fitzpatr…      2 2000-02-15                         5
+    ##  5   425 FALSE        John               26 Carolina Hurr…          2         122 Garrett       57 1982-01-02, 1980-1…                9
+    ##  6   430 FALSE        Mario              26 Carolina Hurr…          2          23 Gosselin      13 1993-04-10, 1993-0…                6
+    ##  7   470 FALSE        Pat                26 Carolina Hurr…          2           5 Jablonski      4 1998-01-03                         6
+    ##  8   490 FALSE        Mike               26 Carolina Hurr…          2         252 Liut         111 1985-10-23                         9
+    ##  9   508 FALSE        Kirk               26 Carolina Hurr…          2           8 McLean         2 1998-03-06, 1998-0…                4
+    ## 10   525 FALSE        Greg               26 Carolina Hurr…          2         219 Millen       120 1983-02-23, 1982-1…               11
+    ## # … with 28 more rows, and 18 more variables: mostSavesDates <chr>, mostSavesOneGame <int>, mostShotsAgainstDates <chr>,
+    ## #   mostShotsAgainstOneGame <int>, mostShutoutsOneSeason <int>, mostShutoutsSeasonIds <chr>, mostWinsOneSeason <int>,
+    ## #   mostWinsSeasonIds <chr>, overtimeLosses <int>, playerId <int>, positionCode <chr>, rookieGamesPlayed <int>, rookieShutouts <int>,
+    ## #   rookieWins <int>, seasons <int>, shutouts <int>, ties <int>, wins <int>
 
 ``` r
 # read from skater records endpoint for hurricanes
 skater.records <- get.nhl.data(table.name = "franchise-skater-records", id = 26)
-head(skater.records)
+skater.records
 ```
 
-    ##      id activePlayer assists firstName franchiseId       franchiseName gameTypeId gamesPlayed goals   lastName
-    ## 1 17239        FALSE       0       Jim          26 Carolina Hurricanes          2          16     0      Agnew
-    ## 2 17418        FALSE       1      Mike          26 Carolina Hurricanes          2           5     0 Antonovich
-    ## 3 17543        FALSE       0      Fred          26 Carolina Hurricanes          2           3     0     Arthur
-    ## 4 17703        FALSE       2    Jergus          26 Carolina Hurricanes          2          10     0       Baca
-    ## 5 17728        FALSE       0      Reid          26 Carolina Hurricanes          2          12     0     Bailey
-    ## 6 18169        FALSE       0       Bob          26 Carolina Hurricanes          2           1     0      Bodak
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             mostAssistsGameDates
-    ## 1 1992-10-06, 1992-10-08, 1992-10-10, 1992-10-12, 1992-10-14, 1992-10-17, 1992-10-20, 1992-10-22, 1992-10-24, 1992-10-28, 1992-10-31, 1992-11-03, 1992-11-06, 1992-11-07, 1992-11-11, 1992-11-13, 1992-11-14, 1992-11-18, 1992-11-19, 1992-11-21, 1992-11-25, 1992-11-27, 1992-11-28, 1992-12-01, 1992-12-03, 1992-12-05, 1992-12-09, 1992-12-11, 1992-12-12, 1992-12-16, 1992-12-18, 1992-12-19, 1992-12-21, 1992-12-23, 1992-12-26, 1992-12-27, 1992-12-31, 1993-01-02, 1993-01-03, 1993-01-06, 1993-01-09, 1993-01-10, 1993-01-13, 1993-01-15, 1993-01-16, 1993-01-18, 1993-01-21, 1993-01-23, 1993-01-24, 1993-01-27, 1993-01-28, 1993-01-30, 1993-02-03, 1993-02-08, 1993-02-12, 1993-02-13, 1993-02-17, 1993-02-20, 1993-02-21, 1993-02-24, 1993-02-27, 1993-02-28, 1993-03-03, 1993-03-05, 1993-03-06, 1993-03-08, 1993-03-10, 1993-03-13, 1993-03-16, 1993-03-19, 1993-03-22, 1993-03-24, 1993-03-27, 1993-03-28, 1993-03-30, 1993-04-01, 1993-04-03, 1993-04-05, 1993-04-07, 1993-04-10, 1993-04-11, 1993-04-13, 1993-04-14, 1993-04-16
-    ## 2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     1979-10-13
-    ## 3                                                 1980-10-09, 1980-10-11, 1980-10-12, 1980-10-15, 1980-10-18, 1980-10-19, 1980-10-22, 1980-10-25, 1980-10-26, 1980-10-29, 1980-10-30, 1980-11-01, 1980-11-05, 1980-11-06, 1980-11-08, 1980-11-12, 1980-11-15, 1980-11-16, 1980-11-20, 1980-11-22, 1980-11-23, 1980-11-26, 1980-11-28, 1980-11-29, 1980-12-02, 1980-12-03, 1980-12-06, 1980-12-07, 1980-12-10, 1980-12-13, 1980-12-17, 1980-12-20, 1980-12-21, 1980-12-23, 1980-12-26, 1980-12-27, 1981-01-02, 1981-01-03, 1981-01-07, 1981-01-09, 1981-01-10, 1981-01-12, 1981-01-14, 1981-01-17, 1981-01-18, 1981-01-21, 1981-01-23, 1981-01-24, 1981-01-28, 1981-01-30, 1981-01-31, 1981-02-02, 1981-02-04, 1981-02-07, 1981-02-08, 1981-02-12, 1981-02-14, 1981-02-15, 1981-02-18, 1981-02-19, 1981-02-22, 1981-02-25, 1981-02-27, 1981-03-01, 1981-03-03, 1981-03-06, 1981-03-08, 1981-03-10, 1981-03-11, 1981-03-14, 1981-03-15, 1981-03-18, 1981-03-21, 1981-03-22, 1981-03-25, 1981-03-27, 1981-03-29, 1981-04-01, 1981-04-03, 1981-04-05
-    ## 4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         1990-10-27, 1991-02-24
-    ## 5                                                 1983-10-05, 1983-10-08, 1983-10-09, 1983-10-13, 1983-10-15, 1983-10-19, 1983-10-22, 1983-10-25, 1983-10-28, 1983-10-30, 1983-11-01, 1983-11-02, 1983-11-05, 1983-11-06, 1983-11-08, 1983-11-12, 1983-11-15, 1983-11-17, 1983-11-19, 1983-11-23, 1983-11-26, 1983-11-30, 1983-12-03, 1983-12-04, 1983-12-06, 1983-12-08, 1983-12-10, 1983-12-13, 1983-12-15, 1983-12-17, 1983-12-20, 1983-12-21, 1983-12-23, 1983-12-26, 1983-12-27, 1983-12-30, 1984-01-03, 1984-01-05, 1984-01-07, 1984-01-08, 1984-01-10, 1984-01-13, 1984-01-15, 1984-01-17, 1984-01-19, 1984-01-21, 1984-01-24, 1984-01-26, 1984-01-28, 1984-01-29, 1984-02-01, 1984-02-04, 1984-02-05, 1984-02-07, 1984-02-11, 1984-02-12, 1984-02-14, 1984-02-16, 1984-02-18, 1984-02-19, 1984-02-23, 1984-02-25, 1984-02-26, 1984-03-03, 1984-03-04, 1984-03-07, 1984-03-08, 1984-03-11, 1984-03-13, 1984-03-15, 1984-03-17, 1984-03-18, 1984-03-20, 1984-03-21, 1984-03-24, 1984-03-25, 1984-03-27, 1984-03-29, 1984-03-31, 1984-04-01
-    ## 6                                                                                                                                                                                                                                                                                                                                                                                                                                                 1989-12-14, 1989-12-16, 1989-12-19, 1989-12-20, 1989-12-23, 1989-12-26, 1989-12-30, 1990-01-03, 1990-01-05, 1990-01-06, 1990-01-10, 1990-01-13, 1990-01-15, 1990-01-17, 1990-01-19, 1990-01-23, 1990-01-25, 1990-01-27, 1990-01-30, 1990-02-01, 1990-02-03, 1990-02-04, 1990-02-07, 1990-02-09, 1990-02-10, 1990-02-14, 1990-02-17, 1990-02-18, 1990-02-21, 1990-02-23, 1990-02-24, 1990-02-28, 1990-03-02, 1990-03-03, 1990-03-06, 1990-03-08, 1990-03-10, 1990-03-11, 1990-03-13, 1990-03-17, 1990-03-18, 1990-03-21, 1990-03-24, 1990-03-25, 1990-03-27, 1990-03-29, 1990-03-31, 1990-04-01
-    ##   mostAssistsOneGame mostAssistsOneSeason mostAssistsSeasonIds
-    ## 1                  0                    0             19921993
-    ## 2                  1                    1             19791980
-    ## 3                  0                    0             19801981
-    ## 4                  1                    2             19901991
-    ## 5                  0                    0             19831984
-    ## 6                  0                    0             19891990
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   mostGoalsGameDates
-    ## 1                                                                                                                                     1992-10-06, 1992-10-08, 1992-10-10, 1992-10-12, 1992-10-14, 1992-10-17, 1992-10-20, 1992-10-22, 1992-10-24, 1992-10-28, 1992-10-31, 1992-11-03, 1992-11-06, 1992-11-07, 1992-11-11, 1992-11-13, 1992-11-14, 1992-11-18, 1992-11-19, 1992-11-21, 1992-11-25, 1992-11-27, 1992-11-28, 1992-12-01, 1992-12-03, 1992-12-05, 1992-12-09, 1992-12-11, 1992-12-12, 1992-12-16, 1992-12-18, 1992-12-19, 1992-12-21, 1992-12-23, 1992-12-26, 1992-12-27, 1992-12-31, 1993-01-02, 1993-01-03, 1993-01-06, 1993-01-09, 1993-01-10, 1993-01-13, 1993-01-15, 1993-01-16, 1993-01-18, 1993-01-21, 1993-01-23, 1993-01-24, 1993-01-27, 1993-01-28, 1993-01-30, 1993-02-03, 1993-02-08, 1993-02-12, 1993-02-13, 1993-02-17, 1993-02-20, 1993-02-21, 1993-02-24, 1993-02-27, 1993-02-28, 1993-03-03, 1993-03-05, 1993-03-06, 1993-03-08, 1993-03-10, 1993-03-13, 1993-03-16, 1993-03-19, 1993-03-22, 1993-03-24, 1993-03-27, 1993-03-28, 1993-03-30, 1993-04-01, 1993-04-03, 1993-04-05, 1993-04-07, 1993-04-10, 1993-04-11, 1993-04-13, 1993-04-14, 1993-04-16
-    ## 2                                                                                                                                                                                     1979-10-11, 1979-10-13, 1979-10-14, 1979-10-17, 1979-10-19, 1979-10-20, 1979-10-24, 1979-10-26, 1979-10-28, 1979-10-31, 1979-11-02, 1979-11-06, 1979-11-09, 1979-11-11, 1979-11-14, 1979-11-17, 1979-11-18, 1979-11-21, 1979-11-24, 1979-11-25, 1979-11-27, 1979-11-30, 1979-12-01, 1979-12-04, 1979-12-07, 1979-12-09, 1979-12-11, 1979-12-12, 1979-12-15, 1979-12-19, 1979-12-22, 1979-12-23, 1979-12-26, 1979-12-29, 1980-01-02, 1980-01-04, 1980-01-06, 1980-01-07, 1980-01-09, 1980-01-12, 1980-01-17, 1980-01-19, 1980-01-21, 1980-01-24, 1980-01-26, 1980-01-28, 1980-01-30, 1980-02-02, 1980-02-03, 1980-02-06, 1980-02-08, 1980-02-10, 1980-02-12, 1980-02-15, 1980-02-16, 1980-02-18, 1980-02-19, 1980-02-23, 1980-02-26, 1980-02-27, 1980-02-29, 1980-03-01, 1980-03-06, 1980-03-08, 1980-03-09, 1980-03-12, 1980-03-13, 1980-03-15, 1980-03-16, 1980-03-19, 1980-03-21, 1980-03-22, 1980-03-24, 1980-03-26, 1980-03-28, 1980-03-29, 1980-04-01, 1980-04-02, 1980-04-04, 1980-04-06
-    ## 3                                                                                                                                                                                     1980-10-09, 1980-10-11, 1980-10-12, 1980-10-15, 1980-10-18, 1980-10-19, 1980-10-22, 1980-10-25, 1980-10-26, 1980-10-29, 1980-10-30, 1980-11-01, 1980-11-05, 1980-11-06, 1980-11-08, 1980-11-12, 1980-11-15, 1980-11-16, 1980-11-20, 1980-11-22, 1980-11-23, 1980-11-26, 1980-11-28, 1980-11-29, 1980-12-02, 1980-12-03, 1980-12-06, 1980-12-07, 1980-12-10, 1980-12-13, 1980-12-17, 1980-12-20, 1980-12-21, 1980-12-23, 1980-12-26, 1980-12-27, 1981-01-02, 1981-01-03, 1981-01-07, 1981-01-09, 1981-01-10, 1981-01-12, 1981-01-14, 1981-01-17, 1981-01-18, 1981-01-21, 1981-01-23, 1981-01-24, 1981-01-28, 1981-01-30, 1981-01-31, 1981-02-02, 1981-02-04, 1981-02-07, 1981-02-08, 1981-02-12, 1981-02-14, 1981-02-15, 1981-02-18, 1981-02-19, 1981-02-22, 1981-02-25, 1981-02-27, 1981-03-01, 1981-03-03, 1981-03-06, 1981-03-08, 1981-03-10, 1981-03-11, 1981-03-14, 1981-03-15, 1981-03-18, 1981-03-21, 1981-03-22, 1981-03-25, 1981-03-27, 1981-03-29, 1981-04-01, 1981-04-03, 1981-04-05
-    ## 4 1990-10-17, 1990-10-19, 1990-10-24, 1990-10-27, 1990-10-28, 1990-10-31, 1990-11-03, 1990-11-06, 1990-11-09, 1990-11-10, 1990-11-14, 1990-11-15, 1990-11-17, 1990-11-21, 1990-11-23, 1990-11-24, 1990-11-28, 1990-11-29, 1990-12-01, 1990-12-03, 1990-12-05, 1990-12-07, 1990-12-08, 1990-12-12, 1990-12-13, 1990-12-15, 1990-12-18, 1990-12-20, 1990-12-22, 1990-12-23, 1990-12-26, 1990-12-29, 1990-12-30, 1991-01-02, 1991-01-05, 1991-01-08, 1991-01-10, 1991-01-12, 1991-01-13, 1991-01-16, 1991-01-23, 1991-01-24, 1991-01-26, 1991-01-29, 1991-01-31, 1991-02-02, 1991-02-03, 1991-02-06, 1991-02-09, 1991-02-10, 1991-02-13, 1991-02-15, 1991-02-16, 1991-02-20, 1991-02-23, 1991-02-24, 1991-02-26, 1991-02-28, 1991-03-02, 1991-03-03, 1991-03-05, 1991-03-09, 1991-03-10, 1991-03-12, 1991-03-14, 1991-03-16, 1991-03-17, 1991-03-19, 1991-03-23, 1991-03-25, 1991-03-27, 1991-03-30, 1991-03-31, 1992-02-25, 1992-02-27, 1992-02-29, 1992-03-01, 1992-03-03, 1992-03-05, 1992-03-07, 1992-03-09, 1992-03-11, 1992-03-13, 1992-03-14, 1992-03-16, 1992-03-18, 1992-03-21, 1992-03-22, 1992-03-24, 1992-03-26, 1992-03-28, 1992-03-29, 1992-04-12, 1992-04-13, 1992-04-15
-    ## 5                                                                                                                                                                                     1983-10-05, 1983-10-08, 1983-10-09, 1983-10-13, 1983-10-15, 1983-10-19, 1983-10-22, 1983-10-25, 1983-10-28, 1983-10-30, 1983-11-01, 1983-11-02, 1983-11-05, 1983-11-06, 1983-11-08, 1983-11-12, 1983-11-15, 1983-11-17, 1983-11-19, 1983-11-23, 1983-11-26, 1983-11-30, 1983-12-03, 1983-12-04, 1983-12-06, 1983-12-08, 1983-12-10, 1983-12-13, 1983-12-15, 1983-12-17, 1983-12-20, 1983-12-21, 1983-12-23, 1983-12-26, 1983-12-27, 1983-12-30, 1984-01-03, 1984-01-05, 1984-01-07, 1984-01-08, 1984-01-10, 1984-01-13, 1984-01-15, 1984-01-17, 1984-01-19, 1984-01-21, 1984-01-24, 1984-01-26, 1984-01-28, 1984-01-29, 1984-02-01, 1984-02-04, 1984-02-05, 1984-02-07, 1984-02-11, 1984-02-12, 1984-02-14, 1984-02-16, 1984-02-18, 1984-02-19, 1984-02-23, 1984-02-25, 1984-02-26, 1984-03-03, 1984-03-04, 1984-03-07, 1984-03-08, 1984-03-11, 1984-03-13, 1984-03-15, 1984-03-17, 1984-03-18, 1984-03-20, 1984-03-21, 1984-03-24, 1984-03-25, 1984-03-27, 1984-03-29, 1984-03-31, 1984-04-01
-    ## 6                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     1989-12-14, 1989-12-16, 1989-12-19, 1989-12-20, 1989-12-23, 1989-12-26, 1989-12-30, 1990-01-03, 1990-01-05, 1990-01-06, 1990-01-10, 1990-01-13, 1990-01-15, 1990-01-17, 1990-01-19, 1990-01-23, 1990-01-25, 1990-01-27, 1990-01-30, 1990-02-01, 1990-02-03, 1990-02-04, 1990-02-07, 1990-02-09, 1990-02-10, 1990-02-14, 1990-02-17, 1990-02-18, 1990-02-21, 1990-02-23, 1990-02-24, 1990-02-28, 1990-03-02, 1990-03-03, 1990-03-06, 1990-03-08, 1990-03-10, 1990-03-11, 1990-03-13, 1990-03-17, 1990-03-18, 1990-03-21, 1990-03-24, 1990-03-25, 1990-03-27, 1990-03-29, 1990-03-31, 1990-04-01
-    ##   mostGoalsOneGame mostGoalsOneSeason mostGoalsSeasonIds mostPenaltyMinutesOneSeason mostPenaltyMinutesSeasonIds
-    ## 1                0                  0           19921993                          68                    19921993
-    ## 2                0                  0           19791980                           2                    19791980
-    ## 3                0                  0           19801981                           0                    19801981
-    ## 4                0                  0 19901991, 19911992                          14                    19901991
-    ## 5                0                  0           19831984                          25                    19831984
-    ## 6                0                  0           19891990                           7                    19891990
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              mostPointsGameDates
-    ## 1 1992-10-06, 1992-10-08, 1992-10-10, 1992-10-12, 1992-10-14, 1992-10-17, 1992-10-20, 1992-10-22, 1992-10-24, 1992-10-28, 1992-10-31, 1992-11-03, 1992-11-06, 1992-11-07, 1992-11-11, 1992-11-13, 1992-11-14, 1992-11-18, 1992-11-19, 1992-11-21, 1992-11-25, 1992-11-27, 1992-11-28, 1992-12-01, 1992-12-03, 1992-12-05, 1992-12-09, 1992-12-11, 1992-12-12, 1992-12-16, 1992-12-18, 1992-12-19, 1992-12-21, 1992-12-23, 1992-12-26, 1992-12-27, 1992-12-31, 1993-01-02, 1993-01-03, 1993-01-06, 1993-01-09, 1993-01-10, 1993-01-13, 1993-01-15, 1993-01-16, 1993-01-18, 1993-01-21, 1993-01-23, 1993-01-24, 1993-01-27, 1993-01-28, 1993-01-30, 1993-02-03, 1993-02-08, 1993-02-12, 1993-02-13, 1993-02-17, 1993-02-20, 1993-02-21, 1993-02-24, 1993-02-27, 1993-02-28, 1993-03-03, 1993-03-05, 1993-03-06, 1993-03-08, 1993-03-10, 1993-03-13, 1993-03-16, 1993-03-19, 1993-03-22, 1993-03-24, 1993-03-27, 1993-03-28, 1993-03-30, 1993-04-01, 1993-04-03, 1993-04-05, 1993-04-07, 1993-04-10, 1993-04-11, 1993-04-13, 1993-04-14, 1993-04-16
-    ## 2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     1979-10-13
-    ## 3                                                 1980-10-09, 1980-10-11, 1980-10-12, 1980-10-15, 1980-10-18, 1980-10-19, 1980-10-22, 1980-10-25, 1980-10-26, 1980-10-29, 1980-10-30, 1980-11-01, 1980-11-05, 1980-11-06, 1980-11-08, 1980-11-12, 1980-11-15, 1980-11-16, 1980-11-20, 1980-11-22, 1980-11-23, 1980-11-26, 1980-11-28, 1980-11-29, 1980-12-02, 1980-12-03, 1980-12-06, 1980-12-07, 1980-12-10, 1980-12-13, 1980-12-17, 1980-12-20, 1980-12-21, 1980-12-23, 1980-12-26, 1980-12-27, 1981-01-02, 1981-01-03, 1981-01-07, 1981-01-09, 1981-01-10, 1981-01-12, 1981-01-14, 1981-01-17, 1981-01-18, 1981-01-21, 1981-01-23, 1981-01-24, 1981-01-28, 1981-01-30, 1981-01-31, 1981-02-02, 1981-02-04, 1981-02-07, 1981-02-08, 1981-02-12, 1981-02-14, 1981-02-15, 1981-02-18, 1981-02-19, 1981-02-22, 1981-02-25, 1981-02-27, 1981-03-01, 1981-03-03, 1981-03-06, 1981-03-08, 1981-03-10, 1981-03-11, 1981-03-14, 1981-03-15, 1981-03-18, 1981-03-21, 1981-03-22, 1981-03-25, 1981-03-27, 1981-03-29, 1981-04-01, 1981-04-03, 1981-04-05
-    ## 4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         1990-10-27, 1991-02-24
-    ## 5                                                 1983-10-05, 1983-10-08, 1983-10-09, 1983-10-13, 1983-10-15, 1983-10-19, 1983-10-22, 1983-10-25, 1983-10-28, 1983-10-30, 1983-11-01, 1983-11-02, 1983-11-05, 1983-11-06, 1983-11-08, 1983-11-12, 1983-11-15, 1983-11-17, 1983-11-19, 1983-11-23, 1983-11-26, 1983-11-30, 1983-12-03, 1983-12-04, 1983-12-06, 1983-12-08, 1983-12-10, 1983-12-13, 1983-12-15, 1983-12-17, 1983-12-20, 1983-12-21, 1983-12-23, 1983-12-26, 1983-12-27, 1983-12-30, 1984-01-03, 1984-01-05, 1984-01-07, 1984-01-08, 1984-01-10, 1984-01-13, 1984-01-15, 1984-01-17, 1984-01-19, 1984-01-21, 1984-01-24, 1984-01-26, 1984-01-28, 1984-01-29, 1984-02-01, 1984-02-04, 1984-02-05, 1984-02-07, 1984-02-11, 1984-02-12, 1984-02-14, 1984-02-16, 1984-02-18, 1984-02-19, 1984-02-23, 1984-02-25, 1984-02-26, 1984-03-03, 1984-03-04, 1984-03-07, 1984-03-08, 1984-03-11, 1984-03-13, 1984-03-15, 1984-03-17, 1984-03-18, 1984-03-20, 1984-03-21, 1984-03-24, 1984-03-25, 1984-03-27, 1984-03-29, 1984-03-31, 1984-04-01
-    ## 6                                                                                                                                                                                                                                                                                                                                                                                                                                                 1989-12-14, 1989-12-16, 1989-12-19, 1989-12-20, 1989-12-23, 1989-12-26, 1989-12-30, 1990-01-03, 1990-01-05, 1990-01-06, 1990-01-10, 1990-01-13, 1990-01-15, 1990-01-17, 1990-01-19, 1990-01-23, 1990-01-25, 1990-01-27, 1990-01-30, 1990-02-01, 1990-02-03, 1990-02-04, 1990-02-07, 1990-02-09, 1990-02-10, 1990-02-14, 1990-02-17, 1990-02-18, 1990-02-21, 1990-02-23, 1990-02-24, 1990-02-28, 1990-03-02, 1990-03-03, 1990-03-06, 1990-03-08, 1990-03-10, 1990-03-11, 1990-03-13, 1990-03-17, 1990-03-18, 1990-03-21, 1990-03-24, 1990-03-25, 1990-03-27, 1990-03-29, 1990-03-31, 1990-04-01
-    ##   mostPointsOneGame mostPointsOneSeason mostPointsSeasonIds penaltyMinutes playerId points positionCode rookieGamesPlayed rookiePoints
-    ## 1                 0                   0            19921993             68  8444893      0            D                NA           NA
-    ## 2                 1                   1            19791980              2  8445015      1            C                NA           NA
-    ## 3                 0                   0            19801981              0  8445090      0            D                 3            0
-    ## 4                 1                   2            19901991             14  8445195      2            D                 9            2
-    ## 5                 0                   0            19831984             25  8445211      0            D                NA           NA
-    ## 6                 0                   0            19891990              7  8445567      0            L                 1            0
-    ##   seasons
-    ## 1       1
-    ## 2       1
-    ## 3       1
-    ## 4       2
-    ## 5       1
-    ## 6       1
+    ## # A tibble: 487 x 31
+    ##       id activePlayer assists firstName franchiseId franchiseName  gameTypeId gamesPlayed goals lastName  mostAssistsGameDates         
+    ##    <int> <lgl>          <int> <chr>           <int> <chr>               <int>       <int> <int> <chr>     <chr>                        
+    ##  1 17239 FALSE              0 Jim                26 Carolina Hurr…          2          16     0 Agnew     1992-10-06, 1992-10-08, 1992…
+    ##  2 17418 FALSE              1 Mike               26 Carolina Hurr…          2           5     0 Antonovi… 1979-10-13                   
+    ##  3 17543 FALSE              0 Fred               26 Carolina Hurr…          2           3     0 Arthur    1980-10-09, 1980-10-11, 1980…
+    ##  4 17703 FALSE              2 Jergus             26 Carolina Hurr…          2          10     0 Baca      1990-10-27, 1991-02-24       
+    ##  5 17728 FALSE              0 Reid               26 Carolina Hurr…          2          12     0 Bailey    1983-10-05, 1983-10-08, 1983…
+    ##  6 18169 FALSE              0 Bob                26 Carolina Hurr…          2           1     0 Bodak     1989-12-14, 1989-12-16, 1989…
+    ##  7 18233 FALSE              0 Charlie            26 Carolina Hurr…          2           1     0 Bourgeois 1988-03-15, 1988-03-19, 1988…
+    ##  8 18288 FALSE              0 Greg               26 Carolina Hurr…          2           1     0 Britz     1986-10-11, 1986-10-12, 1986…
+    ##  9 18328 FALSE              1 Jeff               26 Carolina Hurr…          2           7     0 Brownsch… 1982-04-03                   
+    ## 10 18799 FALSE              1 Shane              26 Carolina Hurr…          2          22     0 Churla    1987-02-01                   
+    ## # … with 477 more rows, and 20 more variables: mostAssistsOneGame <int>, mostAssistsOneSeason <int>, mostAssistsSeasonIds <chr>,
+    ## #   mostGoalsGameDates <chr>, mostGoalsOneGame <int>, mostGoalsOneSeason <int>, mostGoalsSeasonIds <chr>,
+    ## #   mostPenaltyMinutesOneSeason <int>, mostPenaltyMinutesSeasonIds <chr>, mostPointsGameDates <chr>, mostPointsOneGame <int>,
+    ## #   mostPointsOneSeason <int>, mostPointsSeasonIds <chr>, penaltyMinutes <int>, playerId <int>, points <int>, positionCode <chr>,
+    ## #   rookieGamesPlayed <int>, rookiePoints <int>, seasons <int>
 
 ``` r
 # find common columns between the two data frames
@@ -498,107 +502,72 @@ skater.records <- skater.records %>% select(all_of(common.names))
 
 # combine the 2 data frames together
 hurricanes.players.record <- rbind(goalie.records, skater.records)
-head(hurricanes.players.record)
+hurricanes.players.record
 ```
 
-    ##    id activePlayer firstName franchiseId       franchiseName gameTypeId gamesPlayed    lastName playerId positionCode
-    ## 1 336        FALSE       Tom          26 Carolina Hurricanes          2          34    Barrasso  8445275            G
-    ## 2 363        FALSE   Richard          26 Carolina Hurricanes          2           6     Brodeur  8445694            G
-    ## 3 369        FALSE      Sean          26 Carolina Hurricanes          2         256       Burke  8445769            G
-    ## 4 411        FALSE      Mark          26 Carolina Hurricanes          2           3 Fitzpatrick  8446829            G
-    ## 5 425        FALSE      John          26 Carolina Hurricanes          2         122     Garrett  8447066            G
-    ## 6 430        FALSE     Mario          26 Carolina Hurricanes          2          23    Gosselin  8447303            G
-    ##   rookieGamesPlayed seasons
-    ## 1                NA       1
-    ## 2                NA       1
-    ## 3                NA       6
-    ## 4                NA       1
-    ## 5                NA       3
-    ## 6                NA       2
+    ## # A tibble: 525 x 12
+    ##       id activePlayer firstName franchiseId franchiseName      gameTypeId gamesPlayed lastName   playerId positionCode rookieGamesPlay…
+    ##    <int> <lgl>        <chr>           <int> <chr>                   <int>       <int> <chr>         <int> <chr>                   <int>
+    ##  1   336 FALSE        Tom                26 Carolina Hurrican…          2          34 Barrasso    8445275 G                          NA
+    ##  2   363 FALSE        Richard            26 Carolina Hurrican…          2           6 Brodeur     8445694 G                          NA
+    ##  3   369 FALSE        Sean               26 Carolina Hurrican…          2         256 Burke       8445769 G                          NA
+    ##  4   411 FALSE        Mark               26 Carolina Hurrican…          2           3 Fitzpatri…  8446829 G                          NA
+    ##  5   425 FALSE        John               26 Carolina Hurrican…          2         122 Garrett     8447066 G                          NA
+    ##  6   430 FALSE        Mario              26 Carolina Hurrican…          2          23 Gosselin    8447303 G                          NA
+    ##  7   470 FALSE        Pat                26 Carolina Hurrican…          2           5 Jablonski   8448207 G                          NA
+    ##  8   490 FALSE        Mike               26 Carolina Hurrican…          2         252 Liut        8448865 G                          NA
+    ##  9   508 FALSE        Kirk               26 Carolina Hurrican…          2           8 McLean      8449474 G                          NA
+    ## 10   525 FALSE        Greg               26 Carolina Hurrican…          2         219 Millen      8449627 G                          NA
+    ## # … with 515 more rows, and 1 more variable: seasons <int>
 
 ``` r
 # read from goalie records endpoint for hurricanes
 goalie.records2 <- get.nhl.data(table.name = "franchise-goalie-records")
-head(goalie.records2)
+goalie.records2
 ```
 
-    ##    id activePlayer firstName franchiseId       franchiseName gameTypeId gamesPlayed lastName losses  mostGoalsAgainstDates
-    ## 1 235        FALSE       Don          15        Dallas Stars          2         315  Beaupre    125             1983-10-07
-    ## 2 236        FALSE       Bob          28     Arizona Coyotes          2         281  Essensa    114 1992-12-11, 1992-10-12
-    ## 3 237        FALSE      Tony          11  Chicago Blackhawks          2         873 Esposito    302 1983-10-15, 1980-11-26
-    ## 4 238        FALSE     Grant          25     Edmonton Oilers          2         423     Fuhr    117 1984-02-05, 1982-10-12
-    ## 5 239        FALSE       Ron          16 Philadelphia Flyers          2         489  Hextall    172             1987-04-05
-    ## 6 240        FALSE    Curtis          18     St. Louis Blues          2         280   Joseph     96 1992-11-25, 1990-02-20
-    ##   mostGoalsAgainstOneGame mostSavesDates mostSavesOneGame mostShotsAgainstDates mostShotsAgainstOneGame mostShutoutsOneSeason
-    ## 1                      10     1987-03-15               52            1986-03-21                      55                     1
-    ## 2                       8     1989-12-29               49            1989-12-29                      50                     5
-    ## 3                      10     1977-02-26               50            1976-12-12                      53                    15
-    ## 4                       9     1986-03-12               49            1986-03-12                      54                     4
-    ## 5                       9     1990-12-23               45            1988-10-13                      50                     5
-    ## 6                       8     1992-03-02               51            1992-03-02                      54                     2
-    ##          mostShutoutsSeasonIds mostWinsOneSeason mostWinsSeasonIds overtimeLosses playerId positionCode rookieGamesPlayed
-    ## 1 19841985, 19851986, 19861987                25          19851986             NA  8445381            G                44
-    ## 2                     19911992                33          19921993             NA  8446719            G                36
-    ## 3                     19691970                38          19691970             NA  8446720            G                63
-    ## 4                     19871988                40          19871988             NA  8446991            G                48
-    ## 5                     19961997                37          19861987             NA  8447775            G                66
-    ## 6                     19911992                36          19931994             NA  8448382            G                30
-    ##   rookieShutouts rookieWins seasons shutouts ties wins
-    ## 1              0         18       9        3   45  126
-    ## 2              1         18       7       14   32  116
-    ## 3             15         38      15       74  148  418
-    ## 4              0         28      10        9   54  226
-    ## 5              1         37      11       18   58  240
-    ## 6              0         16       6        5   34  137
+    ## # A tibble: 1,078 x 29
+    ##       id activePlayer firstName franchiseId franchiseName  gameTypeId gamesPlayed lastName losses mostGoalsAgainstDa… mostGoalsAgainst…
+    ##    <int> <lgl>        <chr>           <int> <chr>               <int>       <int> <chr>     <int> <chr>                           <int>
+    ##  1   235 FALSE        Don                15 Dallas Stars            2         315 Beaupre     125 1983-10-07                         10
+    ##  2   236 FALSE        Bob                28 Arizona Coyot…          2         281 Essensa     114 1992-12-11, 1992-1…                 8
+    ##  3   237 FALSE        Tony               11 Chicago Black…          2         873 Esposito    302 1983-10-15, 1980-1…                10
+    ##  4   238 FALSE        Grant              25 Edmonton Oile…          2         423 Fuhr        117 1984-02-05, 1982-1…                 9
+    ##  5   239 FALSE        Ron                16 Philadelphia …          2         489 Hextall     172 1987-04-05                          9
+    ##  6   240 FALSE        Curtis             18 St. Louis Blu…          2         280 Joseph       96 1992-11-25, 1990-0…                 8
+    ##  7   241 FALSE        Olie               24 Washington Ca…          2         711 Kolzig      293 2006-01-25, 2005-1…                 8
+    ##  8   242 FALSE        Mike               18 St. Louis Blu…          2         347 Liut        133 1982-02-25                          9
+    ##  9   243 FALSE        Kirk               20 Vancouver Can…          2         516 McLean      228 1996-10-19                          9
+    ## 10   244 FALSE        Gilles             13 Cleveland Bar…          2         250 Meloche     140 1973-10-21                         11
+    ## # … with 1,068 more rows, and 18 more variables: mostSavesDates <chr>, mostSavesOneGame <int>, mostShotsAgainstDates <chr>,
+    ## #   mostShotsAgainstOneGame <int>, mostShutoutsOneSeason <int>, mostShutoutsSeasonIds <chr>, mostWinsOneSeason <int>,
+    ## #   mostWinsSeasonIds <chr>, overtimeLosses <int>, playerId <int>, positionCode <chr>, rookieGamesPlayed <int>, rookieShutouts <int>,
+    ## #   rookieWins <int>, seasons <int>, shutouts <int>, ties <int>, wins <int>
 
 ``` r
 # read from skater records endpoint for hurricanes
 skater.records2 <- get.nhl.data(table.name = "franchise-skater-records")
-head(skater.records2)
+skater.records2
 ```
 
-    ##      id activePlayer assists firstName franchiseId        franchiseName gameTypeId gamesPlayed goals  lastName
-    ## 1 16888        FALSE     417    George           5  Toronto Maple Leafs          2        1188   296 Armstrong
-    ## 2 16889        FALSE       0     Billy           2   Montreal Wanderers          2           2     1      Bell
-    ## 3 16890        FALSE     794    Johnny           6        Boston Bruins          2        1436   545     Bucyk
-    ## 4 16891        FALSE     712      Jean           1   Montréal Canadiens          2        1125   507  Beliveau
-    ## 5 16892        FALSE    1111       Ray           6        Boston Bruins          2        1518   395   Bourque
-    ## 6 16893        FALSE      33    Harold           9 Philadelphia Quakers          2         216    60   Darragh
-    ##                                                                                         mostAssistsGameDates mostAssistsOneGame
-    ## 1 1956-01-07, 1957-03-16, 1957-11-24, 1961-01-15, 1961-12-02, 1962-02-25, 1964-02-23, 1965-12-18, 1969-01-31                  3
-    ## 2                                                                                     1917-12-19, 1917-12-29                  0
-    ## 3                                                                                                 1971-01-01                  5
-    ## 4                                                 1955-02-19, 1956-12-01, 1962-11-24, 1965-11-20, 1967-12-28                  4
-    ## 5                                                                                     1990-02-18, 1994-01-02                  5
-    ## 6                                                 1926-01-19, 1929-11-19, 1929-11-23, 1929-12-10, 1930-01-18                  2
-    ##   mostAssistsOneSeason mostAssistsSeasonIds                                                                 mostGoalsGameDates
-    ## 1                   35             19651966                                                             1959-03-15, 1961-12-16
-    ## 2                    0             19171918                                                                         1917-12-19
-    ## 3                   65             19701971                                                             1973-01-18, 1974-01-05
-    ## 4                   58             19601961                                                 1955-11-05, 1959-03-07, 1969-02-11
-    ## 5                   73             19901991                                                                         1983-03-08
-    ## 6                   17             19291930 1927-03-20, 1928-03-12, 1928-03-17, 1929-11-16, 1930-01-18, 1930-02-01, 1930-02-22
-    ##   mostGoalsOneGame mostGoalsOneSeason mostGoalsSeasonIds mostPenaltyMinutesOneSeason mostPenaltyMinutesSeasonIds
-    ## 1                3                 23           19591960                          97                    19551956
-    ## 2                1                  1           19171918                           0                    19171918
-    ## 3                4                 51           19701971                          57                    19571958
-    ## 4                4                 47           19551956                         143                    19551956
-    ## 5                3                 31           19831984                          96                    19801981
-    ## 6                2                 15           19291930                           8          19271928, 19291930
-    ##                                          mostPointsGameDates mostPointsOneGame mostPointsOneSeason mostPointsSeasonIds penaltyMinutes
-    ## 1 1957-03-16, 1962-02-25, 1964-12-12, 1965-03-21, 1967-11-02                 4                  53            19611962            726
-    ## 2                                                 1917-12-19                 1                   1            19171918              0
-    ## 3                                     1970-12-10, 1971-02-25                 6                 116            19701971            436
-    ## 4                                                 1959-03-07                 7                  91            19581959           1033
-    ## 5                                                 1990-02-18                 6                  96            19831984           1087
-    ## 6                                                 1930-01-18                 4                  32            19291930             32
-    ##   playerId points positionCode rookieGamesPlayed rookiePoints seasons
-    ## 1  8444971    713            R                52           25      21
-    ## 2  8445044      1            C                 2            1       1
-    ## 3  8445240   1339            L                NA           NA      21
-    ## 4  8445408   1219            C                44           34      20
-    ## 5  8445621   1506            D                80           65      21
-    ## 6  8445843     93            L                35           17       6
+    ## # A tibble: 17,209 x 31
+    ##       id activePlayer assists firstName franchiseId franchiseName  gameTypeId gamesPlayed goals lastName mostAssistsGameDates          
+    ##    <int> <lgl>          <int> <chr>           <int> <chr>               <int>       <int> <int> <chr>    <chr>                         
+    ##  1 16888 FALSE            417 George              5 Toronto Maple…          2        1188   296 Armstro… 1956-01-07, 1957-03-16, 1957-…
+    ##  2 16889 FALSE              0 Billy               2 Montreal Wand…          2           2     1 Bell     1917-12-19, 1917-12-29        
+    ##  3 16890 FALSE            794 Johnny              6 Boston Bruins           2        1436   545 Bucyk    1971-01-01                    
+    ##  4 16891 FALSE            712 Jean                1 Montréal Cana…          2        1125   507 Beliveau 1955-02-19, 1956-12-01, 1962-…
+    ##  5 16892 FALSE           1111 Ray                 6 Boston Bruins           2        1518   395 Bourque  1990-02-18, 1994-01-02        
+    ##  6 16893 FALSE             33 Harold              9 Philadelphia …          2         216    60 Darragh  1926-01-19, 1929-11-19, 1929-…
+    ##  7 16894 FALSE             13 Herb                9 Philadelphia …          2         216    24 Drury    1926-02-06, 1926-03-04, 1926-…
+    ##  8 16895 FALSE            852 Bobby              16 Philadelphia …          2        1144   358 Clarke   1976-04-01                    
+    ##  9 16896 FALSE            142 Ken                23 New Jersey De…          2        1283    36 Daneyko  1999-02-13                    
+    ## 10 16897 FALSE              0 Gerry               2 Montreal Wand…          2           4     0 Geran    1917-12-19, 1917-12-22, 1917-…
+    ## # … with 17,199 more rows, and 20 more variables: mostAssistsOneGame <int>, mostAssistsOneSeason <int>, mostAssistsSeasonIds <chr>,
+    ## #   mostGoalsGameDates <chr>, mostGoalsOneGame <int>, mostGoalsOneSeason <int>, mostGoalsSeasonIds <chr>,
+    ## #   mostPenaltyMinutesOneSeason <int>, mostPenaltyMinutesSeasonIds <chr>, mostPointsGameDates <chr>, mostPointsOneGame <int>,
+    ## #   mostPointsOneSeason <int>, mostPointsSeasonIds <chr>, penaltyMinutes <int>, playerId <int>, points <int>, positionCode <chr>,
+    ## #   rookieGamesPlayed <int>, rookiePoints <int>, seasons <int>
 
 ``` r
 # find common columns between the two data frames
@@ -610,23 +579,23 @@ skater.records2 <- skater.records2 %>% select(all_of(common.names))
 
 # combine the 2 data frames together
 players.record.all <- rbind(goalie.records2, skater.records2)
-head(players.record.all)
+players.record.all
 ```
 
-    ##    id activePlayer firstName franchiseId       franchiseName gameTypeId gamesPlayed lastName playerId positionCode rookieGamesPlayed
-    ## 1 235        FALSE       Don          15        Dallas Stars          2         315  Beaupre  8445381            G                44
-    ## 2 236        FALSE       Bob          28     Arizona Coyotes          2         281  Essensa  8446719            G                36
-    ## 3 237        FALSE      Tony          11  Chicago Blackhawks          2         873 Esposito  8446720            G                63
-    ## 4 238        FALSE     Grant          25     Edmonton Oilers          2         423     Fuhr  8446991            G                48
-    ## 5 239        FALSE       Ron          16 Philadelphia Flyers          2         489  Hextall  8447775            G                66
-    ## 6 240        FALSE    Curtis          18     St. Louis Blues          2         280   Joseph  8448382            G                30
-    ##   seasons
-    ## 1       9
-    ## 2       7
-    ## 3      15
-    ## 4      10
-    ## 5      11
-    ## 6       6
+    ## # A tibble: 18,287 x 12
+    ##       id activePlayer firstName franchiseId franchiseName       gameTypeId gamesPlayed lastName playerId positionCode rookieGamesPlayed
+    ##    <int> <lgl>        <chr>           <int> <chr>                    <int>       <int> <chr>       <int> <chr>                    <int>
+    ##  1   235 FALSE        Don                15 Dallas Stars                 2         315 Beaupre   8445381 G                           44
+    ##  2   236 FALSE        Bob                28 Arizona Coyotes              2         281 Essensa   8446719 G                           36
+    ##  3   237 FALSE        Tony               11 Chicago Blackhawks           2         873 Esposito  8446720 G                           63
+    ##  4   238 FALSE        Grant              25 Edmonton Oilers              2         423 Fuhr      8446991 G                           48
+    ##  5   239 FALSE        Ron                16 Philadelphia Flyers          2         489 Hextall   8447775 G                           66
+    ##  6   240 FALSE        Curtis             18 St. Louis Blues              2         280 Joseph    8448382 G                           30
+    ##  7   241 FALSE        Olie               24 Washington Capitals          2         711 Kolzig    8448535 G                           14
+    ##  8   242 FALSE        Mike               18 St. Louis Blues              2         347 Liut      8448865 G                           NA
+    ##  9   243 FALSE        Kirk               20 Vancouver Canucks            2         516 McLean    8449474 G                           41
+    ## 10   244 FALSE        Gilles             13 Cleveland Barons             2         250 Meloche   8449550 G                           56
+    ## # … with 18,277 more rows, and 1 more variable: seasons <int>
 
 ``` r
 #write_csv(players.record.all, "players.record.all.csv")
@@ -637,16 +606,23 @@ head(players.record.all)
 ``` r
 franchise.data <- get.nhl.data(table.name = "franchise")
 franchise.data <- franchise.data %>% select(id, mostRecentTeamId, teamCommonName, teamAbbrev, teamPlaceName)
-head(franchise.data)
+franchise.data
 ```
 
-    ##   id mostRecentTeamId teamCommonName teamAbbrev teamPlaceName
-    ## 1  1                8      Canadiens        MTL      Montréal
-    ## 2  2               41      Wanderers        MWN      Montreal
-    ## 3  3               45         Eagles        SLE     St. Louis
-    ## 4  4               37         Tigers        HAM      Hamilton
-    ## 5  5               10    Maple Leafs        TOR       Toronto
-    ## 6  6                6         Bruins        BOS        Boston
+    ## # A tibble: 39 x 5
+    ##       id mostRecentTeamId teamCommonName teamAbbrev teamPlaceName
+    ##    <int>            <int> <chr>          <chr>      <chr>        
+    ##  1     1                8 Canadiens      MTL        Montréal     
+    ##  2     2               41 Wanderers      MWN        Montreal     
+    ##  3     3               45 Eagles         SLE        St. Louis    
+    ##  4     4               37 Tigers         HAM        Hamilton     
+    ##  5     5               10 Maple Leafs    TOR        Toronto      
+    ##  6     6                6 Bruins         BOS        Boston       
+    ##  7     7               43 Maroons        MMR        Montreal     
+    ##  8     8               51 Americans      BRK        Brooklyn     
+    ##  9     9               39 Quakers        QUA        Philadelphia 
+    ## 10    10                3 Rangers        NYR        New York     
+    ## # … with 29 more rows
 
 ``` r
 goalie.data.hurricanes <- get.nhl.data(table.name = "franchise-goalie-records", id=26) %>% select(activePlayer, firstName, lastName, gamesPlayed, wins, ties, losses, seasons, shutouts, mostShotsAgainstOneGame, mostGoalsAgainstOneGame, mostSavesOneGame, mostShutoutsOneSeason, mostWinsOneSeason)

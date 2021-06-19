@@ -3,7 +3,7 @@ title: "proj 1"
 author: "Lucy Yin"
 date: "6/8/2021"
 output: 
- html_document:
+ github_document:
   toc: true
   toc_depth: 2
 ---
@@ -13,27 +13,29 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 ## Install and load required packages
-```{r}
+```{r install load packages}
 library(httr)
 library(jsonlite)
 library(tidyverse)
 library(knitr)
 library(haven)
-#install.packages("qwraps2")
 library(qwraps2)
 library(rmarkdown)
 library(data.table)
 library(kableExtra)
+library(xml2)
 ```
 
 ## NHL records API
 ```{r match id and name}
-# map id and team names
+# map id, team names and most recent id
 franchise.url <- GET("https://records.nhl.com/site/api/franchise")
 franchise.txt <- content(franchise.url, "text", encoding = "UTF-8")
 franchise.json <- fromJSON(franchise.txt, flatten=TRUE)
 franchise.list <- franchise.json$data %>% as.data.frame()
 franchise.tbl <- tibble(franchise.list$id, franchise.list$teamCommonName, franchise.list$fullName, franchise.list$mostRecentTeamId)
+franchise.tbl
+
 name.id.list <- franchise.tbl$`franchise.list$teamCommonName`
 id.most.recent.id.list <- franchise.tbl$`franchise.list$mostRecentTeamId`
 ```
@@ -70,6 +72,11 @@ get.records <- function(table.name, id=NULL, team.common.name=NULL, ...) {
     
     else if (is.null(id)) {  ## has table name but no id
       full.url <- paste0(base.url, "/", table.name)
+      
+      nfl.records <- GET(full.url)
+      nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
+      return (nfl.records.json$data %>% as_tibble())
     }
     
     else if (table.name %in% c("franchise-team-totals",
@@ -78,20 +85,43 @@ get.records <- function(table.name, id=NULL, team.common.name=NULL, ...) {
                                "franchise-skater-records") & 
              (is.numeric(id))) {  ## table name is one of the 4 and given id
       full.url <- paste0(base.url, "/", table.name, "?cayenneExp=franchiseId=", id)
+      nfl.records <- GET(full.url)
+      nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
+      return (nfl.records.json$data %>% as_tibble())
     }
-
+    
+    ## table name is this, id is one of the 8 (because these results don't return html content)
     else if (table.name %in% ("franchise-detail") & 
-             (is.numeric(id))) {  ## table name is this one and given id which converts to most.recent.id
-      full.url <- paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id)
+             (id %in% c(2:4, 7:9, 13, 39))) {
+      nfl.records.details <- GET(paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id))
+      nfl.records.details.txt <- content(nfl.records.details, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.details.json <- fromJSON(nfl.records.details.txt, flatten=TRUE)  ## convert to list  
+      return (nfl.records.details.json$data %>% as_tibble())
     }
     
-  
-    nfl.records <- GET(full.url)
-    nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
-    nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
-    
-    return (nfl.records.json$data)
-    
+    ## table name is this, id is one of the 31 (these tibbles contain html content, further parse out html)
+    else if (table.name %in% ("franchise-detail") & 
+             (is.numeric(id) %in% c(1, 5 ,6, 10:12, 14:38))) {  ## table name is this one and given id which converts to most.recent.id
+      nfl.records.details <- GET(paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id))
+      nfl.records.details.txt <- content(nfl.records.details, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.details.json <- fromJSON(nfl.records.details.txt, flatten=TRUE)  ## convert to list
+      fran.details <- nfl.records.details.json$data
+      
+      ## these columns contain html content, save as separate vectors
+      txt.string1 <- fran.details$captainHistory
+      txt.string2 <- fran.details$coachingHistory
+      txt.string3 <- fran.details$generalManagerHistory
+      txt.string4 <- fran.details$retiredNumbersSummary
+      
+      ## delete the original columns of html content, then add parsed html content back to table
+      fran.details <- fran.details %>% select(-c(3,4,8,11))
+      fran.details$captainHistory <- read_html(txt.string1) %>% xml_text()
+      fran.details$coachingHistory <- read_html(txt.string2) %>% xml_text()
+      fran.details$generalManagerHistory <- read_html(txt.string3) %>% xml_text()
+      fran.details$retiredNumbersSummary <- read_html(txt.string4) %>% xml_text()
+      return (fran.details)
+    }
   }
   
   else {  ## if no table name
@@ -104,7 +134,8 @@ test different scenarios
 ```{r testing records}
 #get.records("franchise-goalie-records")
 #get.records("franchise-goalie-records", team.common.name = "Eagles")
-#get.records("franchise-detail", team.common.name = "Eagles")
+#get.records("franchise-detail", team.common.name = "Hurricanes")
+#get.records("franchise-detail", id=39)
 #get.records("franchise-team-totals", 26)
 #get.records("franchise-detail", id=23)
 #get.records("franchise-detail")
@@ -206,7 +237,7 @@ get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NU
   nfl.stats3.txt <- content(nfl.stats3, "text", encoding = "UTF-8")
   nfl.stats3.json<- fromJSON(nfl.stats3.txt, flatten=TRUE)
     
-  return (nfl.stats3.json$teams %>% unnest(everything()) %>% unnest(everything()))
+  return (nfl.stats3.json$teams %>% unnest(everything()) %>% unnest(everything()) %>% as_tibble())
 
 }
 ```
@@ -272,6 +303,7 @@ get.nhl.data <- function (table.name=NULL,
 ```
 
 ```{r try wrapper all mod}
+get.nhl.data(table.name = "franchise-detail")
 #get.nhl.data(table.name = "franchise-team-totals")
 #get.nhl.data(modifier = "person.names", id = 26, season = 20142015)
 #get.nhl.data(modifier = "team.stats", id = 26)
@@ -296,8 +328,7 @@ common.names.dv <- intersect(names(team.total), names(division))
 ```{r combining tables}
 # combine the 2 tables together using "franchiseId" as index
 new.data <- left_join(team.total, division, by="franchiseId")
-
-head(new.data)
+new.data
 ```
 
 ## Create new variables
@@ -321,7 +352,7 @@ new.data$perc.road.win <- (new.data$roadWins / (new.data$roadLosses + new.data$r
 # % of losses from road games
 new.data$perc.road.loss <- (new.data$roadLosses / (new.data$roadLosses + new.data$roadOvertimeLosses + new.data$roadTies + new.data$roadWins) *100) %>% round(2)
 
-head(new.data)
+new.data
 #write_csv(new.data, "new.data.csv")
 
 ```
@@ -330,11 +361,11 @@ head(new.data)
 ```{r read data from 2 api and combine - hurricanes}
 # read from goalie records endpoint for hurricanes
 goalie.records <- get.nhl.data(table.name = "franchise-goalie-records", id = 26)
-head(goalie.records)
+goalie.records
 
 # read from skater records endpoint for hurricanes
 skater.records <- get.nhl.data(table.name = "franchise-skater-records", id = 26)
-head(skater.records)
+skater.records
 
 # find common columns between the two data frames
 common.names <- intersect(names(goalie.records), names(skater.records))
@@ -345,17 +376,17 @@ skater.records <- skater.records %>% select(all_of(common.names))
 
 # combine the 2 data frames together
 hurricanes.players.record <- rbind(goalie.records, skater.records)
-head(hurricanes.players.record)
+hurricanes.players.record
 ```
 
 ```{r read data from 2 api and combine - all teams}
 # read from goalie records endpoint for hurricanes
 goalie.records2 <- get.nhl.data(table.name = "franchise-goalie-records")
-head(goalie.records2)
+goalie.records2
 
 # read from skater records endpoint for hurricanes
 skater.records2 <- get.nhl.data(table.name = "franchise-skater-records")
-head(skater.records2)
+skater.records2
 
 # find common columns between the two data frames
 common.names <- intersect(names(goalie.records), names(skater.records))
@@ -366,7 +397,7 @@ skater.records2 <- skater.records2 %>% select(all_of(common.names))
 
 # combine the 2 data frames together
 players.record.all <- rbind(goalie.records2, skater.records2)
-head(players.record.all)
+players.record.all
 #write_csv(players.record.all, "players.record.all.csv")
 ```
 
@@ -375,7 +406,7 @@ head(players.record.all)
 ```{r read data from 2 api}
 franchise.data <- get.nhl.data(table.name = "franchise")
 franchise.data <- franchise.data %>% select(id, mostRecentTeamId, teamCommonName, teamAbbrev, teamPlaceName)
-head(franchise.data)
+franchise.data
 
 goalie.data.hurricanes <- get.nhl.data(table.name = "franchise-goalie-records", id=26) %>% select(activePlayer, firstName, lastName, gamesPlayed, wins, ties, losses, seasons, shutouts, mostShotsAgainstOneGame, mostGoalsAgainstOneGame, mostSavesOneGame, mostShutoutsOneSeason, mostWinsOneSeason)
 ```
