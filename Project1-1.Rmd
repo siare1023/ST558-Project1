@@ -1,0 +1,620 @@
+---
+title: "proj 1"
+author: "Lucy Yin"
+date: "6/8/2021"
+output: 
+ github_document:
+  toc: true
+  toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Install and load required packages
+```{r install load packages}
+library(httr)
+library(jsonlite)
+library(tidyverse)
+library(knitr)
+library(haven)
+library(qwraps2)
+library(rmarkdown)
+library(data.table)
+library(kableExtra)
+library(xml2)
+```
+
+# Write functions to contact the NHL records and stats API's
+## NHL records API
+```{r match id, name, most recent id}
+# map id, team names and most recent id
+franchise.url <- GET("https://records.nhl.com/site/api/franchise")
+franchise.txt <- content(franchise.url, "text", encoding = "UTF-8")
+franchise.json <- fromJSON(franchise.txt, flatten=TRUE)
+franchise.list <- franchise.json$data %>% as.data.frame()
+franchise.tbl <- tibble(franchise.list$id, franchise.list$teamCommonName, franchise.list$fullName, franchise.list$mostRecentTeamId)
+franchise.tbl
+
+# pull out the common name vector (index can serve as the id)
+name.id.list <- franchise.tbl$`franchise.list$teamCommonName`
+# pull out the most recent id vector (index can serve as the id)
+id.most.recent.id.list <- franchise.tbl$`franchise.list$mostRecentTeamId`
+```
+
+```{r records API}
+get.records <- function(table.name, id=NULL, team.common.name=NULL, ...) {
+  base.url <- "https://records.nhl.com/site/api"
+  
+  ## table name is given
+  if (!is.null(table.name)) {
+    
+    ## check if user input the team.common.name, if yes then convert it to the corresponding id
+    if (!is.null(team.common.name)) {
+      for (i in 1:length(name.id.list)) {
+        if (team.common.name == name.id.list[i]) {
+          id <- (i)
+        }
+      }
+    }
+    
+    ## change user inputted id to most.recent.id to be used for the franchise-details table
+    if (is.numeric(id)) {
+      for (i in 1:length(id.most.recent.id.list)) {
+        if (i == id) {
+          most.recent.id <- id.most.recent.id.list[i]
+        }
+      }
+    } 
+
+    ## table name is this one and yes id
+    if (table.name %in% ("franchise") & (is.numeric(id))) {
+      return ("The table selected cannot be returned with the specified ID or team common name input.")
+    }  
+    
+    ## yes table name, no id
+    else if (is.null(id)) {
+      full.url <- paste0(base.url, "/", table.name)
+      
+      nfl.records <- GET(full.url)
+      nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
+      return (nfl.records.json$data %>% as_tibble())
+    }
+    
+    ## table name is one of the 4, yes id
+    else if (table.name %in% c("franchise-team-totals",
+                               "franchise-season-records",
+                               "franchise-goalie-records",
+                               "franchise-skater-records") & 
+             (is.numeric(id))) {
+      full.url <- paste0(base.url, "/", table.name, "?cayenneExp=franchiseId=", id)
+      nfl.records <- GET(full.url)
+      nfl.records.txt <- content(nfl.records, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.json <- fromJSON(nfl.records.txt, flatten=TRUE)  ## convert to list
+      return (nfl.records.json$data %>% as_tibble())
+    }
+    
+    ## table name is this, id is one of the 8 (because these results don't return html content)
+    else if (table.name %in% ("franchise-detail") & 
+             (id %in% c(2:4, 7:9, 13, 39))) {
+      nfl.records.details <- GET(paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id))
+      nfl.records.details.txt <- content(nfl.records.details, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.details.json <- fromJSON(nfl.records.details.txt, flatten=TRUE)  ## convert to list  
+      return (nfl.records.details.json$data %>% as_tibble())
+    }
+    
+    ## table name is this, id is one of the 31 (these tibbles contain html content, further parse out html)
+    else if (table.name %in% ("franchise-detail") & 
+             (is.numeric(id) %in% c(1, 5 ,6, 10:12, 14:38))) {
+      nfl.records.details <- GET(paste0(base.url, "/", table.name, "?cayenneExp=mostRecentTeamId=", most.recent.id))
+      nfl.records.details.txt <- content(nfl.records.details, "text", encoding = "UTF-8")  ## convert to JSON text form
+      nfl.records.details.json <- fromJSON(nfl.records.details.txt, flatten=TRUE)  ## convert to list
+      fran.details <- nfl.records.details.json$data
+      
+      ## these columns contain html content, save as separate vectors
+      txt.string1 <- fran.details$captainHistory
+      txt.string2 <- fran.details$coachingHistory
+      txt.string3 <- fran.details$generalManagerHistory
+      txt.string4 <- fran.details$retiredNumbersSummary
+      
+      ## delete the original columns of html content, then add parsed html content back into table
+      fran.details <- fran.details %>% select(-c(3,4,8,11))
+      fran.details$captainHistory <- read_html(txt.string1) %>% xml_text()
+      fran.details$coachingHistory <- read_html(txt.string2) %>% xml_text()
+      fran.details$generalManagerHistory <- read_html(txt.string3) %>% xml_text()
+      fran.details$retiredNumbersSummary <- read_html(txt.string4) %>% xml_text()
+      return (fran.details)
+    }
+  }
+  
+  ## table name not given
+  else {
+    return ("Must provide a table name to get results.")
+  }
+}
+```
+
+### Try out NHL records API
+```{r testing records}
+get.records("franchise-goalie-records")
+get.records("franchise-goalie-records", team.common.name = "Eagles")
+get.records("franchise-detail")
+get.records("franchise-detail", team.common.name = "Hurricanes")
+get.records("franchise-detail", id=39)
+get.records("franchise-team-totals", 26)
+get.records("franchise", id=23)
+get.records("franchise")
+
+```
+
+## NHL stats API
+
+```{r stat API all modifiers}
+get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NULL, ...) {
+  base.url3 <- "https://statsapi.web.nhl.com/api/v1/teams"
+  
+  ## change the id inputs to most.recent.id to be used in this stats api section
+  if (is.numeric(id)) {
+    for (i in 1:length(id.most.recent.id.list)) {
+      if (i == id) {
+        most.recent.id <- id.most.recent.id.list[i]
+      }
+    }
+  }
+  
+  if (is.numeric(id2)) {
+    for (i in 1:length(id.most.recent.id.list)) {
+      if (i == id2) {
+        most.recent.id2 <- id.most.recent.id.list[i]
+      }
+    }
+  }  
+  
+  if (is.numeric(id3)) {
+    for (i in 1:length(id.most.recent.id.list)) {
+      if (i == id3) {
+        most.recent.id3 <- id.most.recent.id.list[i]
+      }
+    }
+  }   
+
+  if (is.numeric(id4)) {
+    for (i in 1:length(id.most.recent.id.list)) {
+      if (i == id4) {
+        most.recent.id4 <- id.most.recent.id.list[i]
+      }
+    }
+  }      
+  
+  ## if modifier is 1 of the 5, no id (most.recent.id)
+  if (modifier %in% c("team.roster",
+                      "person.names",
+                      "team.schedule.next", 
+                      "team.schedule.previous",  
+                      "team.stats") & 
+      is.null(id)) {  ## modifier is 1 of the 5 and no most recent id known (from converting from id)
+    full.url2 <- paste0(base.url3, "?expand=", modifier)
+  }
+  ## if modifier is 1 of the 5, yes id (most.recent.id)
+  else if (modifier %in% c("team.roster",
+                           "person.names",
+                           "team.schedule.next",
+                           "team.schedule.previous",
+                           "team.stats") & 
+           is.numeric(most.recent.id)) {
+    full.url2 <- paste0(base.url3, "/", most.recent.id, "?expand=", modifier)
+  }
+  
+  ## if modifier is this, no id (most.recent.id), yes season
+  else if (modifier %in% ("team.roster&season") & 
+           is.null(id) & 
+           is.numeric(season)) {
+    full.url2 <- paste0(base.url3, "?expand=", modifier, "=", season)
+  }
+  
+  ## if modifier is this, yes id (most.recent.id), yes season
+  else if (modifier %in% ("team.roster&season") & 
+           is.numeric(most.recent.id) & 
+           is.numeric(season)) {
+    full.url2 <- paste0(base.url3, "/", most.recent.id, "?expand=", modifier, "=", season)
+  }  
+  
+  ## if modifier is this, no season
+  else if (modifier %in% ("team.roster&season") & is.null(season)) {  ## modifier is this and no season
+    return ("Must provide a season input to get the team roster & season stats.")
+  }    
+
+  ## if modifier is this, multiple id's (most recent id's) given
+  else if (modifier %in% ("teamId") & 
+           is.numeric(c(most.recent.id, most.recent.id2, most.recent.id3, most.recent.id4))) {
+    full.url2 <- paste0(base.url3, "?", modifier, "=",
+                        paste(most.recent.id, most.recent.id2, most.recent.id3, most.recent.id4, sep = ","))
+  }
+  ## if modifier is this, no id (most recent id)
+  else if (modifier %in% ("statsSingleSeasonPlayoffs") & is.null(id)) {
+    full.url2 <- paste0(base.url3, "?stats=", modifier)
+  }
+  
+  ## if modifier is this, yes id (most.recent.id)
+  else if (modifier %in% ("statsSingleSeasonPlayoffs") & is.numeric(most.recent.id)) {  ## modifier is this and yes most recent id
+    full.url2 <- paste0(base.url3, "/", most.recent.id, "?stats=", modifier)
+  }
+  
+  ## all other combinations
+  else {
+    return ("Invalid input, please try again.")  
+  }
+      
+  nfl.stats3 <- GET(full.url2)
+  nfl.stats3.txt <- content(nfl.stats3, "text", encoding = "UTF-8")
+  nfl.stats3.json<- fromJSON(nfl.stats3.txt, flatten=TRUE)
+  
+  ## because return tibble has data frames within, need to unnest twice to parse out everything  
+  return (nfl.stats3.json$teams %>% unnest(everything()) %>% unnest(everything()) %>% as_tibble())
+
+}
+```
+
+### Try out NHL stats API
+```{r testing stat}
+get.stat2("team.stats", 26)
+
+get.stats.data <- get.stat2("team.stats")
+row.odd <- seq_len(nrow(get.stats.data)) %% 2  ## Create row indicator
+row.odd ## Print row indicator
+
+# subset odd rows where numbers are given in raw
+data.row.odd <- get.stats.data[row.odd == 1, ]
+data.row.odd
+
+# subset even rows where ranks are given instead of raw number
+data.row.even.ranks <- get.stats.data[row.odd == 0, ]
+data.row.even.ranks
+```
+
+## Wrapper Function
+```{r wrapper all mod}
+get.nhl.data <- function (table.name=NULL, 
+                          modifier=NULL, 
+                          id=NULL, 
+                          team.common.name=NULL, 
+                          season=NULL, 
+                          id2=NULL, id3=NULL, id4=NULL, ...) {
+
+  ## yes table name, yes modifier
+  if (!is.null(table.name) & !is.null(modifier)) {
+    stop ("Cannot use both table name and modifier to get back information.")
+  }
+  
+  ## yes table name
+  else if (!is.null(table.name) & is.null(team.common.name) & is.null(id) & is.null(modifier)) {
+    output <- get.records(table.name)
+  }  
+  
+  ## yes table name, yes id or team.common.name, no modifier
+  else if (!is.null(table.name) & (is.numeric(id) | !is.null(team.common.name)) & is.null(modifier)) {
+    output <- get.records(table.name, id, team.common.name)
+  }
+  
+  ## yes modifier
+  else if (!is.null(modifier) & is.null(table.name) & is.null(id) & is.null(team.common.name)) {
+    output <- get.stat2(modifier)
+  }
+  
+  ## yes modifier, yes id
+  else if (!is.null(modifier) & is.null(table.name) & is.numeric(id)) {
+    output <- get.stat2(modifier, id)
+  }
+  
+  ## yes modifier, yes season
+  else if (!is.null(modifier) & is.null(table.name) & !is.null(season)) {
+    output <- get.stat2(modifier, season)
+  }
+  
+  ## yes modifier, yes multiple id
+  else if (!is.null(modifier) & is.null(table.name) & is.numeric(id) & is.numeric(id2)) {
+    output <- get.stat2(modifier, id, id2, id3, id4)
+  }
+  
+  ## all other combinations
+  else {
+    return ("Invalid combination of inputs, please try again.")
+  }
+  
+  return(output)
+}
+```
+
+```{r try wrapper all mod}
+get.nhl.data(table.name = "franchise-detail", id=12)
+get.nhl.data(table.name = "franchise-team-totals")
+get.nhl.data(modifier = "person.names", id = 26, season = 20142015)
+get.nhl.data(modifier = "team.stats", id = 26)
+```
+
+# Exporatory Data Analysis
+## Grabbing data and combine
+
+```{r grabbing data from 2 tables}
+# get all information from "franchise-team-totals"
+team.total.raw <- get.nhl.data(table.name = "franchise-team-totals") 
+
+# filter to get only the 31 active teams
+team.total <- team.total.raw %>% rename(abbreviation = triCode) %>% 
+  select(activeFranchise, gameTypeId, lastSeasonId, everything()) %>%
+  filter(activeFranchise==1 & gameTypeId==2 & is.na(lastSeasonId))
+
+# get division data for different teams from "team.stats"
+division.raw <- get.nhl.data(modifier = "team.stats")
+
+# select only odd rows (does not include ranks), then select useful columns
+row.odd2 <- seq_len(nrow(division.raw)) %% 2  ## Create row indicator
+row.odd2 ## Print row indicator
+
+
+division <- division.raw[row.odd2 == 1, ] %>%
+  select(franchiseId, name, abbreviation, teamName, venue.name, venue.city, 
+         division.id, division.name, conference.id, conference.name)
+
+# find common columns between the 2 data frames
+common.names.dv <- intersect(names(team.total), names(division))
+```
+
+```{r combining tables}
+# combine the 2 tables (join matching rows from division to team.total) together using "franchiseId" as index
+new.data <- left_join(team.total, division, by="franchiseId")
+new.data
+```
+
+## Create new variables
+```{r new variable}
+
+# % of wins from all games played
+new.data$perc.total.games.win <- (new.data$wins / new.data$gamesPlayed * 100) %>% round(2)
+
+# % of losses from all games played
+new.data$perc.total.games.loss <- (new.data$losses / new.data$gamesPlayed * 100) %>% round(2)
+
+# % of wins from home games
+new.data$perc.home.win <- (new.data$homeWins / (new.data$homeLosses + new.data$homeOvertimeLosses + new.data$homeTies + new.data$homeWins) *100) %>% round(2)
+
+# % of losses from home games
+new.data$perc.home.loss <- (new.data$homeLosses / (new.data$homeLosses + new.data$homeOvertimeLosses + new.data$homeTies + new.data$homeWins) *100) %>% round(2)
+
+# % of wins from road games
+new.data$perc.road.win <- (new.data$roadWins / (new.data$roadLosses + new.data$roadOvertimeLosses + new.data$roadTies + new.data$roadWins) *100) %>% round(2)
+
+# % of losses from road games
+new.data$perc.road.loss <- (new.data$roadLosses / (new.data$roadLosses + new.data$roadOvertimeLosses + new.data$roadTies + new.data$roadWins) *100) %>% round(2)
+
+new.data
+
+```
+
+## Read data from 2 different endpoints and combine
+```{r read data from 2 api and combine - hurricanes}
+# read from goalie records endpoint for hurricanes
+goalie.records <- get.nhl.data(table.name = "franchise-goalie-records", id = 26)
+goalie.records
+
+# read from skater records endpoint for hurricanes
+skater.records <- get.nhl.data(table.name = "franchise-skater-records", id = 26)
+skater.records
+
+# find common columns between the two tibbles
+common.names <- intersect(names(goalie.records), names(skater.records))
+
+# only keep common columns in each tibble
+goalie.records <- goalie.records %>% select(all_of(common.names))
+skater.records <- skater.records %>% select(all_of(common.names))
+
+# combine the 2 tibbles together by binding rows
+hurricanes.players.record <- rbind(goalie.records, skater.records)
+hurricanes.players.record
+```
+
+```{r read data from 2 api and combine - all teams}
+# read from goalie records endpoint for all teams
+goalie.records2 <- get.nhl.data(table.name = "franchise-goalie-records")
+goalie.records2
+
+# read from skater records endpoint for all teams
+skater.records2 <- get.nhl.data(table.name = "franchise-skater-records")
+skater.records2
+
+# find common columns between the two tibbles
+common.names <- intersect(names(goalie.records2), names(skater.records2))
+
+# only keep common columns in each tibble
+goalie.records2 <- goalie.records2 %>% select(all_of(common.names))
+skater.records2 <- skater.records2 %>% select(all_of(common.names))
+
+# combine the 2 tibbles together
+players.record.all <- rbind(goalie.records2, skater.records2)
+players.record.all
+
+# find common columns between the above tibble and the previous division tibble
+common.names.players <- intersect(names(players.record.all), names(division))
+
+# combine 2 tibbles together (matching rows from division to players.record.all) using franchiseId as index
+new.data.players <- left_join(players.record.all, division, by="franchiseId")
+
+
+```
+
+## Contingency Tables
+```{r contingency table active/inactive}
+# see how many players are in each team
+table(players.record.all$franchiseName)
+
+# see how many active and inactive players are in each time
+table(players.record.all$activePlayer)
+
+# find the count of active/inactive players by franchise
+contingency.table.players <- table(players.record.all$franchiseName, players.record.all$activePlayer) %>% 
+  kable(caption = "Contingency Table of Active (TRUE) / Inactive (FALSE) Player Count by Franchise")
+contingency.table.players
+
+# find the proportion by margin=2 (by column)
+contingency.table.players.prop <- table(players.record.all$franchiseName, players.record.all$activePlayer) %>%
+  prop.table(margin=2)*100
+contingency.table.players.prop %>% 
+  kable(caption = "Proportion of all Active (TRUE) / Inactive (FALSE) Players by Franchise") 
+```
+
+
+```{r contingency table wins and division}
+# see how many teams are in each division
+table(new.data$division.name)
+
+# see how many games are won among all teams
+table(new.data$wins)
+
+# find the count of franchises w/i a division that had over 1500 wins
+contingency.table2 <- table(new.data$division.name, new.data$wins>1500) %>%
+  kable(caption = "Contingency Table of Number of Franchises in a Division that had Over 1500 Wins")
+contingency.table2
+
+# find the proportion by margin=2 (by columns)
+contingency.table2.prop <- table(new.data$division.name, new.data$wins>1500) %>%
+  prop.table(margin=2)*100
+contingency.table2.prop %>%
+  kable(caption = "Proportion of Over 1500 Win Teams By Division")
+
+```
+
+## Numerical Summaries for Categorical Variables
+```{r numerical summaries}
+# find the average games played by each position
+new.data.players %>% group_by(positionCode) %>% 
+  summarize(avg.games.played = mean(gamesPlayed))
+
+# find the average games played by each position and division name
+new.data.players %>% drop_na() %>% group_by(positionCode, division.name) %>% 
+  summarize(avg.games.played = mean(gamesPlayed))
+
+# find the 5 number summary (and mean) of the percentage of total games won by all teams
+new.data %>% select(perc.total.games.win) %>% summary()
+
+# find the 5 number summary (and mean) of the percentage of total games lost by all teams
+new.data %>% select(perc.total.games.loss) %>% summary()
+
+# find the average percent of games won for home vs. road games by division
+new.data %>% select(-3) %>% drop_na() %>% 
+  group_by(division.name) %>% 
+  summarize(avg.perc.home.win = mean(perc.home.win), avg.perc.road.win = mean(perc.road.win))
+
+# find the average percent of games lost for home vs. road games by division
+new.data %>% select(-3) %>% drop_na() %>% 
+  group_by(division.name) %>% 
+  summarize(avg.perc.home.loss = mean(perc.home.loss), avg.perc.road.loss = mean(perc.road.loss))
+
+```
+
+## Plots
+### Bar plot
+```{r plot - bar - new.data}
+ggplot(data = new.data, aes(x = division.name)) + 
+  geom_bar(aes(fill = as.factor(conference.name)), position = "dodge") + 
+  labs(x = "Division", title = "Bar Plot of Number of Franchise in Each Division with Indication of Conference") + 
+  scale_fill_discrete(name = "Conference Name", labels = c("Eastern Conference", "Western Conference"))
+```
+```{r plot - bar - players.record.all}
+ggplot(data = players.record.all, aes(x = positionCode)) + 
+  geom_bar(aes(fill = as.factor(activePlayer)), position = "dodge") + 
+  labs(x = "Position", title = "Number of Players by Position with Indication of Active or Inactive Status") + 
+  scale_x_discrete(labels = c("Center", "Defense", "Goalie", "Left Wing", "Right Wing")) +
+  scale_fill_discrete(name = "Active/Inactive Players", labels = c("Inactive", "Active"))
+```
+
+### Histogram
+```{r plot - histogram - players.record.all}
+ggplot(data = players.record.all, aes(x = gamesPlayed)) +
+  geom_histogram(color = "purple", fill = "orange") +
+  labs(x = "Games Played", title = "Number of Games Played by each (of all) Players")
+```
+
+
+```{r plot - histogram facet - player.record.all}
+ggplot(data = players.record.all, aes(x = gamesPlayed)) +
+  geom_histogram(color = "purple", fill = "orange") +
+  facet_grid(~ positionCode, 
+             labeller = as_labeller(c(C = "Center", D = "Defense", G = "Goalie", L = "Left Wing", R = "Right Wing"))) +
+  labs(x = "Games Played", title = "Number of Games Played by each (of all) Players by Position Played")
+```
+
+### Boxplot
+```{r plot - box plot - new.data}
+ggplot(data = new.data, aes(x = division.name, y = gamesPlayed)) +
+  geom_boxplot(fill = "maroon") +
+  stat_summary(fun = mean, geom = "line", aes(group = conference.name, col = conference.name)) +
+  labs(x = "Division Name", y = "# of Games Played", title = "Number of Games Played for Each Division")
+```
+
+
+### Scatter Plot
+```{r plot - scatter - new.data}
+ggplot(data = new.data, aes(x = wins, y = losses)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +  ## diagonal line indicating 1-1 ratio for win/losses
+  geom_smooth() +   ## generalized additive model smoother in blue
+  geom_smooth(method = lm, col = "yellow") +  ## best fit linear model smoother
+  labs(x = "Games Won", y = "Games Lost", title = "Number of Games Won vs. Number of Games Lost for Each Franchise")
+```
+
+```{r plot - scatter facet}
+ggplot(data = new.data, aes(x = wins, y = losses)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +  ## diagonal line indicating 1-1 ratio for win/losses
+  geom_smooth() +   ## generalized additive model smoother in blue
+  geom_smooth(method = lm, col = "yellow") +  ## best fit linear model smoother
+  facet_grid(~ conference.name, labeller = as_labeller(c(Eastern = "Eastern Conference", 
+                                      Western = "Western Conference"))) +
+  labs(x = "Games Won", y = "Games Lost", title = "Number of Games Won vs. Number of Games Lost for Franchies in Each Division")
+```
+
+### Scatter Plot using Group
+```{r plot - point and group - home games}
+ggplot(data = new.data, aes(x = homeWins, y = homeLosses)) +
+  geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
+  geom_abline(intercept=0, slope=1) +
+  geom_smooth(data = subset(new.data, conference.name=="Eastern"),
+              method = "lm", color = "springgreen") +
+  geom_smooth(data = subset(new.data, conference.name=="Western"),
+              method = "lm", color = "slateblue") +
+  labs(x = "Home Games Won", y = "Home Games Lost", title = "Number of Home Games Won vs. Lost for Each Franchise by Conference")
+```
+```{r plot - point and group - road games}
+ggplot(data = new.data, aes(x = roadWins, y = roadLosses)) +
+  geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
+  geom_abline(intercept=0, slope=1) +
+  geom_smooth(data = subset(new.data, conference.name=="Eastern"),
+              method = "lm", color = "springgreen") +
+  geom_smooth(data = subset(new.data, conference.name=="Western"),
+              method = "lm", color = "slateblue") +
+  labs(x = "Road Games Won", y = "Road Games Lost", title = "Number of Road Games Won vs. Lost for Each Franchise by Conference")
+```
+
+```{r plot - point and group - perc won games}
+ggplot(data = new.data, aes(x = perc.home.win, y = perc.road.win)) +
+  geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
+  geom_abline(intercept=0, slope=1) +
+  geom_smooth(data = subset(new.data, conference.name=="Eastern"),
+              method = "lm", color = "springgreen") +
+  geom_smooth(data = subset(new.data, conference.name=="Western"),
+              method = "lm", color = "slateblue") +
+  labs(x = "% of Home Games Won", y = "% Road Games Won", title = "% of Home Games Won vs. Road Games Won for Each Franchise by Conference")
+```
+
+```{r plot - point and group - perc lost games}
+ggplot(data = new.data, aes(x = perc.home.loss, y = perc.road.loss)) +
+  geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
+  geom_abline(intercept=0, slope=1) +
+  geom_smooth(data = subset(new.data, conference.name=="Eastern"),
+              method = "lm", color = "springgreen") +
+  geom_smooth(data = subset(new.data, conference.name=="Western"),
+              method = "lm", color = "slateblue") +
+  labs(x = "% of Home Games Loss", y = "% Road Games Loss", title = "% of Home Games Loss vs. Road Games Loss for Each Franchise by Conference")
+```
