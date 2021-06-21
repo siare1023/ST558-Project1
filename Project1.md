@@ -1,17 +1,19 @@
-proj 1
+Project 1 - Vignette for Reading and Summarizing Data from the NHL API
 ================
 Lucy Yin
-6/8/2021
+6/20/2021
 
+-   [Introduction](#introduction)
 -   [Install and load required
     packages](#install-and-load-required-packages)
 -   [Write functions to contact the NHL records and stats
-    API’s](#write-functions-to-contact-the-nhl-records-and-stats-apis)
+    API](#write-functions-to-contact-the-nhl-records-and-stats-api)
     -   [NHL records API](#nhl-records-api)
         -   [Try out NHL records API](#try-out-nhl-records-api)
     -   [NHL stats API](#nhl-stats-api)
         -   [Try out NHL stats API](#try-out-nhl-stats-api)
     -   [Wrapper Function](#wrapper-function)
+        -   [Try out wrapper function](#try-out-wrapper-function)
 -   [Exporatory Data Analysis](#exporatory-data-analysis)
     -   [Grabbing data and combine](#grabbing-data-and-combine)
     -   [Create new variables](#create-new-variables)
@@ -23,11 +25,23 @@ Lucy Yin
     -   [Plots](#plots)
         -   [Bar plot](#bar-plot)
         -   [Histogram](#histogram)
-        -   [Boxplot](#boxplot)
+        -   [Box Plot](#box-plot)
         -   [Scatter Plot](#scatter-plot)
         -   [Scatter Plot using Group](#scatter-plot-using-group)
+-   [Outro](#outro)
+
+# Introduction
+
+This vignette introduces my way for reading and summarizing data from
+the National Hockey League’s (NHL) API. To access the NHL Stats API
+Documentation, please visit this [GitLab
+page](https://gitlab.com/dword4/nhlapi/-/blob/master/stats-api.md).
 
 # Install and load required packages
+
+First we need to install and load in the needed packages. To install the
+packages, simply do `install.packages("name of package")`. After
+successful installation, read in the following packages.
 
 ``` r
 library(httr)
@@ -42,9 +56,27 @@ library(kableExtra)
 library(xml2)
 ```
 
-# Write functions to contact the NHL records and stats API’s
+# Write functions to contact the NHL records and stats API
 
 ## NHL records API
+
+We will need to contact the records and stats API for this vignette.
+First is the NHL records API. The different endpoints we will
+incorporate include:
+
+-   franchise  
+-   franchise-team-totals  
+-   franchise-season-records  
+-   franchise-goalie-records  
+-   franchise-skater records  
+-   franchise-detail
+
+The function `get.records` below contacts the NHL records API and
+returns well-formatted, parsed data in tibble format. Users have the
+option to specify the franchise of choice by team’s short name (such as
+Hurricanes, Eagles, etc.) or by the team ID number. To make this
+possible, we have to first map each franchise’s team short name to its
+team ID number.
 
 ``` r
 # map id, team names and most recent id
@@ -154,12 +186,20 @@ get.records <- function(table.name, id=NULL, team.common.name=NULL, ...) {
       txt.string3 <- fran.details$generalManagerHistory
       txt.string4 <- fran.details$retiredNumbersSummary
       
-      ## delete the original columns of html content, then add parsed html content back into table
+      ## delete the original columns of html content
       fran.details <- fran.details %>% select(-c(3,4,8,11))
-      fran.details$captainHistory <- read_html(txt.string1) %>% xml_text()
-      fran.details$coachingHistory <- read_html(txt.string2) %>% xml_text()
-      fran.details$generalManagerHistory <- read_html(txt.string3) %>% xml_text()
-      fran.details$retiredNumbersSummary <- read_html(txt.string4) %>% xml_text()
+
+      ## use gsub function to remove all enter breaks from our character string 
+      txt.string1.1 <- gsub("[\r\n\t]", "", txt.string1)
+      txt.string2.1 <- gsub("[\r\n\t]", "", txt.string2)
+      txt.string3.1 <- gsub("[\r\n\t]", "", txt.string3)
+      txt.string4.1 <- gsub("[\r\n\t]", "", txt.string4)
+      
+      ## add parsed html content back into table
+      fran.details$captainHistory <- read_html(txt.string1.1) %>% xml_text()
+      fran.details$coachingHistory <- read_html(txt.string2.1) %>% xml_text()
+      fran.details$generalManagerHistory <- read_html(txt.string3.1) %>% xml_text()
+      fran.details$retiredNumbersSummary <- read_html(txt.string4.1) %>% xml_text()
       return (fran.details)
     }
   }
@@ -172,6 +212,9 @@ get.records <- function(table.name, id=NULL, team.common.name=NULL, ...) {
 ```
 
 ### Try out NHL records API
+
+We can test out the `get.records` function with a few different
+combination of inputs to make sure the function works.
 
 ``` r
 get.records("franchise-goalie-records")
@@ -252,26 +295,35 @@ get.records("franchise-detail", team.common.name = "Hurricanes")
     ## 1 https://records.nhl.com/site/asset/public/ext/hero/Team Pages/Aho.jpg
     ##   mostRecentTeamId teamAbbrev        teamFullName
     ## 1               12        CAR Carolina Hurricanes
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   captainHistory
-    ## 1 Jordan Staal: 2019-20 – Present\r\n\tJustin Williams: 2018-19\r\n\tJustin Faulk and Jordan Staal: 2017-18\r\n\t(No Captain): 2016-17\r\n\tEric Staal: 2010-11 – 2015-16\r\n\tRod Brind’Amour and Eric Staal: 2009-10\r\n\tRod Brind’Amour: 2005-06 – 2008-09\r\n\tRon Francis: 2000-01 – 2003-04\r\n\tKeith Primeau and Ron Francis: 1999-00\r\n\tKeith Primeau: 1998-99\r\n\tKevin Dineen: 1996-97 – 1997-98\r\n\tBrendan Shanahan: 1995-96\r\n\tPat Verbeek: 1992-93 – 1994-95\r\n\tRandy Ladouceur: 1991-92\r\n\tRon Francis: 1985-86 – 1990-91\r\n\tMark Johnson and Ron Francis: 1984-85\r\n\tMark Johnson: 1983-84\r\n\tRuss Anderson: 1982-83\r\n\tDave Keon: 1981-82\r\n\tRick Ley and Mike Rogers: 1980-81\r\n\tRick Ley: 1979-80\r\n
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     coachingHistory
-    ## 1 Rod Brind’Amour: Oct. 4, 2018 – Present\r\n\tBill Peters: Oct. 10, 2014 – April 7, 2018\r\n\tKirk Muller: Nov. 29, 2011 – April 13, 2014\r\n\tPaul Maurice: Dec. 4, 2008 – Nov. 27, 2011\r\n\tPeter Laviolette: Dec. 18, 2003 – Nov. 30, 2008\r\n\tPaul Maurice: Nov. 7, 1995 – Dec. 14, 2003\r\n\tPaul Holmgren: Jan. 21 – Nov. 5, 1995\r\n\tPierre McGuire: Nov. 17, 1993 – April 14, 1994\r\n\tPaul Holmgren: Oct. 6, 1992 – Nov. 13, 1993\r\n\tJim Roberts:  Oct. 5, 1991 – May 1, 1992\r\n\tRick Ley: Oct. 5, 1989 – April 13, 1991\r\n\tLarry Pleau: Feb. 7, 1988 – April 9, 1989\r\n\tJack Evans: Oct. 5, 1983 – Feb. 6, 1988\r\n\tJohn Cunniff: March 8 – April 3, 1983\r\n\tLarry Pleau: Jan. 27 – March 6, 1983\r\n\tLarry Kish: Oct. 6, 1982 – Jan. 23, 1983\r\n\tLarry Pleau: Feb. 22, 1981 – April 4, 1982\r\n\tDon Blackburn: Oct. 11, 1979 – Feb. 19, 1981\r\n\t* Date range indicates first and last games coached during tenure (regular season or playoffs)\r\n
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                generalManagerHistory
-    ## 1 Don Waddell: May 8, 2018 – Present\r\n\tRon Francis: April 28, 2014 – March 7, 2018\r\n\tJim Rutherford: June 28, 1994 – April 28, 2014\r\n\tPaul Holmgren: Sept. 8, 1993 – June 28, 1994\r\n\tBrian Burke: May 26, 1992 – Sept. 1, 1993\r\n\tEddie Johnston: May 11, 1989 – May 12, 1992\r\n\tEmile Francis: May 2, 1983 – May 11, 1989\r\n\tLarry Pleau: April 2, 1981 – May 2, 1983\r\n\tJack Kelley: May 6, 1977 – April 2, 1981\r\n\t* Date range indicates first and last days of tenure\r\n
-    ##                                                                                          retiredNumbersSummary
-    ## 1 2 – Glen Wesley (1994-08)\r\n\t10 – Ron Francis (1981-91, 1998-04)\r\n\t17 – Rod Brind’Amour (2000-10)  \r\n
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       captainHistory
+    ## 1 Jordan Staal: 2019-20 – PresentJustin Williams: 2018-19Justin Faulk and Jordan Staal: 2017-18(No Captain): 2016-17Eric Staal: 2010-11 – 2015-16Rod Brind’Amour and Eric Staal: 2009-10Rod Brind’Amour: 2005-06 – 2008-09Ron Francis: 2000-01 – 2003-04Keith Primeau and Ron Francis: 1999-00Keith Primeau: 1998-99Kevin Dineen: 1996-97 – 1997-98Brendan Shanahan: 1995-96Pat Verbeek: 1992-93 – 1994-95Randy Ladouceur: 1991-92Ron Francis: 1985-86 – 1990-91Mark Johnson and Ron Francis: 1984-85Mark Johnson: 1983-84Russ Anderson: 1982-83Dave Keon: 1981-82Rick Ley and Mike Rogers: 1980-81Rick Ley: 1979-80
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     coachingHistory
+    ## 1 Rod Brind’Amour: Oct. 4, 2018 – PresentBill Peters: Oct. 10, 2014 – April 7, 2018Kirk Muller: Nov. 29, 2011 – April 13, 2014Paul Maurice: Dec. 4, 2008 – Nov. 27, 2011Peter Laviolette: Dec. 18, 2003 – Nov. 30, 2008Paul Maurice: Nov. 7, 1995 – Dec. 14, 2003Paul Holmgren: Jan. 21 – Nov. 5, 1995Pierre McGuire: Nov. 17, 1993 – April 14, 1994Paul Holmgren: Oct. 6, 1992 – Nov. 13, 1993Jim Roberts:  Oct. 5, 1991 – May 1, 1992Rick Ley: Oct. 5, 1989 – April 13, 1991Larry Pleau: Feb. 7, 1988 – April 9, 1989Jack Evans: Oct. 5, 1983 – Feb. 6, 1988John Cunniff: March 8 – April 3, 1983Larry Pleau: Jan. 27 – March 6, 1983Larry Kish: Oct. 6, 1982 – Jan. 23, 1983Larry Pleau: Feb. 22, 1981 – April 4, 1982Don Blackburn: Oct. 11, 1979 – Feb. 19, 1981* Date range indicates first and last games coached during tenure (regular season or playoffs)
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                      generalManagerHistory
+    ## 1 Don Waddell: May 8, 2018 – PresentRon Francis: April 28, 2014 – March 7, 2018Jim Rutherford: June 28, 1994 – April 28, 2014Paul Holmgren: Sept. 8, 1993 – June 28, 1994Brian Burke: May 26, 1992 – Sept. 1, 1993Eddie Johnston: May 11, 1989 – May 12, 1992Emile Francis: May 2, 1983 – May 11, 1989Larry Pleau: April 2, 1981 – May 2, 1983Jack Kelley: May 6, 1977 – April 2, 1981* Date range indicates first and last days of tenure
+    ##                                                                          retiredNumbersSummary
+    ## 1 2 – Glen Wesley (1994-08)10 – Ron Francis (1981-91, 1998-04)17 – Rod Brind’Amour (2000-10)  
 
 ``` r
-get.records("franchise-detail", id=39)
+get.records("franchise-detail", id=12)
 ```
 
-    ## # A tibble: 1 x 13
-    ##      id active captainHistory coachingHistory dateAwarded directoryUrl
-    ##   <int> <lgl>  <lgl>          <lgl>           <lgl>       <chr>       
-    ## 1    39 TRUE   NA             NA              NA          ""          
-    ## # … with 7 more variables: firstSeasonId <int>, generalManagerHistory <lgl>,
-    ## #   heroImageUrl <lgl>, mostRecentTeamId <int>, retiredNumbersSummary <lgl>,
-    ## #   teamAbbrev <chr>, teamFullName <chr>
+    ##   id active         dateAwarded
+    ## 1 12   TRUE 1926-09-25T00:00:00
+    ##                                            directoryUrl firstSeasonId
+    ## 1 https://www.nhl.com/redwings/team/business-operations      19261927
+    ##                                                                     heroImageUrl
+    ## 1 https://records.nhl.com/site/asset/public/ext/hero/Team Pages/DET/WingsWin.jpg
+    ##   mostRecentTeamId teamAbbrev      teamFullName
+    ## 1               17        DET Detroit Red Wings
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           captainHistory
+    ## 1 Dylan Larkin: 2020-21 – Present(No Captain): 2018-19 – 2019-20Henrik Zetterberg: 2012-13 – 2017-18Nicklas Lidstrom: 2006-07 – 2011-12Steve Yzerman: 1986-87 – 2005-06Danny Gare: 1982-83 – 1985-86Reed Larson: 1981-82Errol Thompson and Reed Larson: 1980-81Dale McCourt: 1979-80Dennis Hextall, Nick Libett and Paul Woods: 1978-79Dan Maloney and Dennis Hextall: 1977-78Danny Grant and Dennis Polonich: 1976-77Danny Grant and Terry Harper: 1975-76Marcel Dionne: 1974-75Alex Delvecchio, Nick Libett, Red Berenson, Gary Bergman, Ted Harris, Mickey Redmond and Larry Johnston: 1973-74Alex Delvecchio: 1962-63 – 1972-73Gordie Howe: 1958-59 – 1961-62Red Kelly: 1956-57 – 1957-58Ted Lindsay: 1952-53 – 1955-56Sid Abel: 1946-47 – 1951-52Flash Hollett and Sid Abel: 1945-46Flash Hollett: 1944-45Mud Bruneteau and Flash Hollett: 1943-44Sid Abel: 1942-43Ebbie Goodfellow and Syd Howe: 1941-42Ebbie Goodfellow: 1938-39 – 1940-41Doug Young: 1935-36 – 1937-38Ebbie Goodfellow: 1934-35Herbie Lewis: 1933-34Larry Aurie: 1932-33Carson Cooper: 1931-32George Hay: 1930-31Reg Noble: 1927-28 – 1929-30Art Duncan: 1926-27
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                coachingHistory
+    ## 1 Jeff Blashill: Oct. 9, 2015 – PresentMike Babcock: Oct. 5, 2005 – April 29, 2015Dave Lewis: Oct. 10, 2002 – May 3, 2004Scotty Bowman: Oct. 23, 1998 – June 13, 2002Dave Lewis and Barry Smith (Co-Coaches): Oct. 10-21, 1998Scotty Bowman: Oct. 5, 1993 – June 16, 1998Bryan Murray: Oct. 4, 1990 – May 1, 1993Jacques Demers: Oct. 9, 1986 – April 1, 1990Brad Park: Dec. 31, 1985 – April 6, 1986Harry Neale: Oct 10 – Dec. 29, 1985Nick Polano: Oct. 6, 1982 – April 13, 1985Billy Dea: March 11 – April 4, 1982Wayne Maxner: Nov. 26, 1980 – March 8, 1982Ted Lindsay: March 21 – Nov. 22, 1980Bobby Kromm: Oct. 13, 1977 – March 19, 1980Larry Wilson: Jan. 20 – April 3, 1977Alex Delvecchio: Dec. 5, 1975 – Jan. 15, 1977Doug Barkley: Oct. 8 – Dec. 3, 1975Alex Delvecchio: Nov. 7, 1973 – April 6, 1975Ted Garvin: Oct. 10 – Nov. 4, 1973Johnny Wilson: Nov. 1, 1971 – April 1, 1973Doug Barkley: Jan. 9 – Oct. 31, 1971Ned Harkness: Oct. 10, 1970 – Jan. 7, 1971Sid Abel: Oct. 16, 1969 – April 12, 1970Bill Gadsby: Oct. 11, 1968 – Oct. 15, 1969Sid Abel: Jan. 4, 1958 – March 31, 1968Jimmy Skinner: Oct. 7, 1954 – Jan. 1, 1958Tommy Ivan: Oct. 15, 1947 – April 16, 1954Jack Adams: Nov. 15, 1927 – April 5, 1947Duke Keats: Feb. 24 – March 26, 1927Art Duncan: Nov. 18, 1926 – Feb. 22, 1927* Date range indicates first and last games coached during tenure (regular season or playoffs)
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 generalManagerHistory
+    ## 1 Steve Yzerman: April 19, 2019 – PresentKen Holland: July 18, 1997 – April 19, 2019Jim Devellano: June 3, 1994 – July 18, 1997Bryan Murray: July 13, 1990 – June 3, 1994Jim Devellano: July 12, 1982 – July 11, 1990Jimmy Skinner: April 11, 1980 – July 12, 1982Ted Lindsay: March 16, 1977 – April 11, 1980Alex Delvecchio: May 21, 1974 – March 16, 1977Jimmy Skinner: Feb. 6 – May 21, 1974Ned Harkness: Jan. 8, 1971 – Feb. 6, 1974Sid Abel: April 26, 1962 – Jan. 6, 1971Jack Adams: May 14, 1927 – April 26, 1962Art Duncan: Oct. 18, 1926 – May 14, 1927* Date range indicates first and last days of tenure
+    ##                                                                                                                                                                                                                                     retiredNumbersSummary
+    ## 1 1 – Terry Sawchuk (1949-55, 1957-64, 1968-69)4 – Red Kelly (1947-60)5 – Nicklas Lidstrom (1991-12)7 – Ted Lindsay (1947-57, 1964-65)9 – Gordie Howe (1946-71)10 – Alex Delvecchio (1951-73)12 – Sid Abel (1938-43, 1945-52)19 – Steve Yzerman (1983-06)
 
 ``` r
 get.records("franchise-team-totals", 26)
@@ -320,6 +372,22 @@ get.records("franchise")
 
 ## NHL stats API
 
+Next we write a function to contact the NHL stats API for the different
+modifiers:
+
+-   team.roster  
+-   person.names  
+-   team.schedule.next  
+-   team.schedule.previous  
+-   team.stats  
+-   team.roster&season  
+-   teamId  
+-   statsSingleSeasonPlayoffs
+
+Depending on the modifier, user will need to input different variables
+into the function to retrieve meaningful data out. For this vignette we
+will only work with the `team.stats` modifier.
+
 ``` r
 get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NULL, ...) {
   base.url3 <- "https://statsapi.web.nhl.com/api/v1/teams"
@@ -363,7 +431,7 @@ get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NU
                       "team.schedule.next", 
                       "team.schedule.previous",  
                       "team.stats") & 
-      is.null(id)) {  ## modifier is 1 of the 5 and no most recent id known (from converting from id)
+      is.null(id)) {
     full.url2 <- paste0(base.url3, "?expand=", modifier)
   }
   ## if modifier is 1 of the 5, yes id (most.recent.id)
@@ -391,7 +459,7 @@ get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NU
   }  
   
   ## if modifier is this, no season
-  else if (modifier %in% ("team.roster&season") & is.null(season)) {  ## modifier is this and no season
+  else if (modifier %in% ("team.roster&season") & is.null(season)) {
     return ("Must provide a season input to get the team roster & season stats.")
   }    
 
@@ -407,7 +475,7 @@ get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NU
   }
   
   ## if modifier is this, yes id (most.recent.id)
-  else if (modifier %in% ("statsSingleSeasonPlayoffs") & is.numeric(most.recent.id)) {  ## modifier is this and yes most recent id
+  else if (modifier %in% ("statsSingleSeasonPlayoffs") & is.numeric(most.recent.id)) {
     full.url2 <- paste0(base.url3, "/", most.recent.id, "?stats=", modifier)
   }
   
@@ -420,13 +488,18 @@ get.stat2 <- function(modifier, id=NULL, season=NULL, id2=NULL, id3=NULL, id4=NU
   nfl.stats3.txt <- content(nfl.stats3, "text", encoding = "UTF-8")
   nfl.stats3.json<- fromJSON(nfl.stats3.txt, flatten=TRUE)
   
-  ## because return tibble has data frames within, need to unnest twice to parse out everything  
+  ## because returned tibble has data frames within, need to unnest twice to parse out everything  
   return (nfl.stats3.json$teams %>% unnest(everything()) %>% unnest(everything()) %>% as_tibble())
 
 }
 ```
 
 ### Try out NHL stats API
+
+We use the `get.stats2` function above and retrieved the `team.stats`
+table. We see for each team there are 2 rows, first row has all the raw
+data, the second row has the ranking information. So we can separate
+this into two different tables by accessing the odd or even rows.
 
 ``` r
 get.stat2("team.stats", 26)
@@ -558,6 +631,11 @@ data.row.even.ranks
 
 ## Wrapper Function
 
+We write a wrapper function as the one-stop-shop for the user to access
+any of the API endpoints above. This wrapper function can let user
+access both the `get.records` and `get.stats2` functions using any
+modifiers, teamID’s, team names, etc.
+
 ``` r
 get.nhl.data <- function (table.name=NULL, 
                           modifier=NULL, 
@@ -610,6 +688,11 @@ get.nhl.data <- function (table.name=NULL,
 }
 ```
 
+### Try out wrapper function
+
+We can try a few different combinations to make sure the `get.nhl.data`
+wrapper function works properly.
+
 ``` r
 get.nhl.data(table.name = "franchise-detail", id=12)
 ```
@@ -622,14 +705,14 @@ get.nhl.data(table.name = "franchise-detail", id=12)
     ## 1 https://records.nhl.com/site/asset/public/ext/hero/Team Pages/DET/WingsWin.jpg
     ##   mostRecentTeamId teamAbbrev      teamFullName
     ## 1               17        DET Detroit Red Wings
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     captainHistory
-    ## 1 Dylan Larkin: 2020-21 – Present\r\n\t(No Captain): 2018-19 – 2019-20\r\n\tHenrik Zetterberg: 2012-13 – 2017-18\r\n\tNicklas Lidstrom: 2006-07 – 2011-12\r\n\tSteve Yzerman: 1986-87 – 2005-06\r\n\tDanny Gare: 1982-83 – 1985-86\r\n\tReed Larson: 1981-82\r\n\tErrol Thompson and Reed Larson: 1980-81\r\n\tDale McCourt: 1979-80\r\n\tDennis Hextall, Nick Libett and Paul Woods: 1978-79\r\n\tDan Maloney and Dennis Hextall: 1977-78\r\n\tDanny Grant and Dennis Polonich: 1976-77\r\n\tDanny Grant and Terry Harper: 1975-76\r\n\tMarcel Dionne: 1974-75\r\n\tAlex Delvecchio, Nick Libett, Red Berenson, Gary Bergman, Ted Harris, Mickey Redmond and Larry Johnston: 1973-74\r\n\tAlex Delvecchio: 1962-63 – 1972-73\r\n\tGordie Howe: 1958-59 – 1961-62\r\n\tRed Kelly: 1956-57 – 1957-58\r\n\tTed Lindsay: 1952-53 – 1955-56\r\n\tSid Abel: 1946-47 – 1951-52\r\n\tFlash Hollett and Sid Abel: 1945-46\r\n\tFlash Hollett: 1944-45\r\n\tMud Bruneteau and Flash Hollett: 1943-44\r\n\tSid Abel: 1942-43\r\n\tEbbie Goodfellow and Syd Howe: 1941-42\r\n\tEbbie Goodfellow: 1938-39 – 1940-41\r\n\tDoug Young: 1935-36 – 1937-38\r\n\tEbbie Goodfellow: 1934-35\r\n\tHerbie Lewis: 1933-34\r\n\tLarry Aurie: 1932-33\r\n\tCarson Cooper: 1931-32\r\n\tGeorge Hay: 1930-31\r\n\tReg Noble: 1927-28 – 1929-30\r\n\tArt Duncan: 1926-27\r\n
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              coachingHistory
-    ## 1 Jeff Blashill: Oct. 9, 2015 – Present\r\n\tMike Babcock: Oct. 5, 2005 – April 29, 2015\r\n\tDave Lewis: Oct. 10, 2002 – May 3, 2004\r\n\tScotty Bowman: Oct. 23, 1998 – June 13, 2002\r\n\tDave Lewis and Barry Smith (Co-Coaches): Oct. 10-21, 1998\r\n\tScotty Bowman: Oct. 5, 1993 – June 16, 1998\r\n\tBryan Murray: Oct. 4, 1990 – May 1, 1993\r\n\tJacques Demers: Oct. 9, 1986 – April 1, 1990\r\n\tBrad Park: Dec. 31, 1985 – April 6, 1986\r\n\tHarry Neale: Oct 10 – Dec. 29, 1985\r\n\tNick Polano: Oct. 6, 1982 – April 13, 1985\r\n\tBilly Dea: March 11 – April 4, 1982\r\n\tWayne Maxner: Nov. 26, 1980 – March 8, 1982\r\n\tTed Lindsay: March 21 – Nov. 22, 1980\r\n\tBobby Kromm: Oct. 13, 1977 – March 19, 1980\r\n\tLarry Wilson: Jan. 20 – April 3, 1977\r\n\tAlex Delvecchio: Dec. 5, 1975 – Jan. 15, 1977\r\n\tDoug Barkley: Oct. 8 – Dec. 3, 1975\r\n\tAlex Delvecchio: Nov. 7, 1973 – April 6, 1975\r\n\tTed Garvin: Oct. 10 – Nov. 4, 1973\r\n\tJohnny Wilson: Nov. 1, 1971 – April 1, 1973\r\n\tDoug Barkley: Jan. 9 – Oct. 31, 1971\r\n\tNed Harkness: Oct. 10, 1970 – Jan. 7, 1971\r\n\tSid Abel: Oct. 16, 1969 – April 12, 1970\r\n\tBill Gadsby: Oct. 11, 1968 – Oct. 15, 1969\r\n\tSid Abel: Jan. 4, 1958 – March 31, 1968\r\n\tJimmy Skinner: Oct. 7, 1954 – Jan. 1, 1958\r\n\tTommy Ivan: Oct. 15, 1947 – April 16, 1954\r\n\tJack Adams: Nov. 15, 1927 – April 5, 1947\r\n\tDuke Keats: Feb. 24 – March 26, 1927\r\n\tArt Duncan: Nov. 18, 1926 – Feb. 22, 1927\r\n\t* Date range indicates first and last games coached during tenure (regular season or playoffs)\r\n
-    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   generalManagerHistory
-    ## 1 Steve Yzerman: April 19, 2019 – Present\r\n\tKen Holland: July 18, 1997 – April 19, 2019\r\n\tJim Devellano: June 3, 1994 – July 18, 1997\r\n\tBryan Murray: July 13, 1990 – June 3, 1994\r\n\tJim Devellano: July 12, 1982 – July 11, 1990\r\n\tJimmy Skinner: April 11, 1980 – July 12, 1982\r\n\tTed Lindsay: March 16, 1977 – April 11, 1980\r\n\tAlex Delvecchio: May 21, 1974 – March 16, 1977\r\n\tJimmy Skinner: Feb. 6 – May 21, 1974\r\n\tNed Harkness: Jan. 8, 1971 – Feb. 6, 1974\r\n\tSid Abel: April 26, 1962 – Jan. 6, 1971\r\n\tJack Adams: May 14, 1927 – April 26, 1962\r\n\tArt Duncan: Oct. 18, 1926 – May 14, 1927\r\n\t* Date range indicates first and last days of tenure\r\n
-    ##                                                                                                                                                                                                                                                                                   retiredNumbersSummary
-    ## 1 1 – Terry Sawchuk (1949-55, 1957-64, 1968-69)\r\n\t4 – Red Kelly (1947-60)\r\n\t5 – Nicklas Lidstrom (1991-12)\r\n\t7 – Ted Lindsay (1947-57, 1964-65)\r\n\t9 – Gordie Howe (1946-71)\r\n\t10 – Alex Delvecchio (1951-73)\r\n\t12 – Sid Abel (1938-43, 1945-52)\r\n\t19 – Steve Yzerman (1983-06)\r\n
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           captainHistory
+    ## 1 Dylan Larkin: 2020-21 – Present(No Captain): 2018-19 – 2019-20Henrik Zetterberg: 2012-13 – 2017-18Nicklas Lidstrom: 2006-07 – 2011-12Steve Yzerman: 1986-87 – 2005-06Danny Gare: 1982-83 – 1985-86Reed Larson: 1981-82Errol Thompson and Reed Larson: 1980-81Dale McCourt: 1979-80Dennis Hextall, Nick Libett and Paul Woods: 1978-79Dan Maloney and Dennis Hextall: 1977-78Danny Grant and Dennis Polonich: 1976-77Danny Grant and Terry Harper: 1975-76Marcel Dionne: 1974-75Alex Delvecchio, Nick Libett, Red Berenson, Gary Bergman, Ted Harris, Mickey Redmond and Larry Johnston: 1973-74Alex Delvecchio: 1962-63 – 1972-73Gordie Howe: 1958-59 – 1961-62Red Kelly: 1956-57 – 1957-58Ted Lindsay: 1952-53 – 1955-56Sid Abel: 1946-47 – 1951-52Flash Hollett and Sid Abel: 1945-46Flash Hollett: 1944-45Mud Bruneteau and Flash Hollett: 1943-44Sid Abel: 1942-43Ebbie Goodfellow and Syd Howe: 1941-42Ebbie Goodfellow: 1938-39 – 1940-41Doug Young: 1935-36 – 1937-38Ebbie Goodfellow: 1934-35Herbie Lewis: 1933-34Larry Aurie: 1932-33Carson Cooper: 1931-32George Hay: 1930-31Reg Noble: 1927-28 – 1929-30Art Duncan: 1926-27
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                coachingHistory
+    ## 1 Jeff Blashill: Oct. 9, 2015 – PresentMike Babcock: Oct. 5, 2005 – April 29, 2015Dave Lewis: Oct. 10, 2002 – May 3, 2004Scotty Bowman: Oct. 23, 1998 – June 13, 2002Dave Lewis and Barry Smith (Co-Coaches): Oct. 10-21, 1998Scotty Bowman: Oct. 5, 1993 – June 16, 1998Bryan Murray: Oct. 4, 1990 – May 1, 1993Jacques Demers: Oct. 9, 1986 – April 1, 1990Brad Park: Dec. 31, 1985 – April 6, 1986Harry Neale: Oct 10 – Dec. 29, 1985Nick Polano: Oct. 6, 1982 – April 13, 1985Billy Dea: March 11 – April 4, 1982Wayne Maxner: Nov. 26, 1980 – March 8, 1982Ted Lindsay: March 21 – Nov. 22, 1980Bobby Kromm: Oct. 13, 1977 – March 19, 1980Larry Wilson: Jan. 20 – April 3, 1977Alex Delvecchio: Dec. 5, 1975 – Jan. 15, 1977Doug Barkley: Oct. 8 – Dec. 3, 1975Alex Delvecchio: Nov. 7, 1973 – April 6, 1975Ted Garvin: Oct. 10 – Nov. 4, 1973Johnny Wilson: Nov. 1, 1971 – April 1, 1973Doug Barkley: Jan. 9 – Oct. 31, 1971Ned Harkness: Oct. 10, 1970 – Jan. 7, 1971Sid Abel: Oct. 16, 1969 – April 12, 1970Bill Gadsby: Oct. 11, 1968 – Oct. 15, 1969Sid Abel: Jan. 4, 1958 – March 31, 1968Jimmy Skinner: Oct. 7, 1954 – Jan. 1, 1958Tommy Ivan: Oct. 15, 1947 – April 16, 1954Jack Adams: Nov. 15, 1927 – April 5, 1947Duke Keats: Feb. 24 – March 26, 1927Art Duncan: Nov. 18, 1926 – Feb. 22, 1927* Date range indicates first and last games coached during tenure (regular season or playoffs)
+    ##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 generalManagerHistory
+    ## 1 Steve Yzerman: April 19, 2019 – PresentKen Holland: July 18, 1997 – April 19, 2019Jim Devellano: June 3, 1994 – July 18, 1997Bryan Murray: July 13, 1990 – June 3, 1994Jim Devellano: July 12, 1982 – July 11, 1990Jimmy Skinner: April 11, 1980 – July 12, 1982Ted Lindsay: March 16, 1977 – April 11, 1980Alex Delvecchio: May 21, 1974 – March 16, 1977Jimmy Skinner: Feb. 6 – May 21, 1974Ned Harkness: Jan. 8, 1971 – Feb. 6, 1974Sid Abel: April 26, 1962 – Jan. 6, 1971Jack Adams: May 14, 1927 – April 26, 1962Art Duncan: Oct. 18, 1926 – May 14, 1927* Date range indicates first and last days of tenure
+    ##                                                                                                                                                                                                                                     retiredNumbersSummary
+    ## 1 1 – Terry Sawchuk (1949-55, 1957-64, 1968-69)4 – Red Kelly (1947-60)5 – Nicklas Lidstrom (1991-12)7 – Ted Lindsay (1947-57, 1964-65)9 – Gordie Howe (1946-71)10 – Alex Delvecchio (1951-73)12 – Sid Abel (1938-43, 1945-52)19 – Steve Yzerman (1983-06)
 
 ``` r
 get.nhl.data(table.name = "franchise-team-totals")
@@ -641,7 +724,7 @@ get.nhl.data(table.name = "franchise-team-totals")
     ##  1     1               1      19821983          23          2        2993
     ##  2     2               1      19821983          23          3         257
     ##  3     3               1      19721973          22          2        3788
-    ##  4     4               1      19721973          22          3         309
+    ##  4     4               1      19721973          22          3         310
     ##  5     5               1      19261927          10          2        6560
     ##  6     6               1      19261927          10          3         518
     ##  7     7               1      19671968          16          3         449
@@ -707,7 +790,16 @@ get.nhl.data(modifier = "team.stats", id = 26)
 
 # Exporatory Data Analysis
 
+After setting up the functions to retrieve data from the NHL API, we can
+grab data to specifically do exploratory data analysis.
+
 ## Grabbing data and combine
+
+First we can use the wrapper function to retrieve the
+`franchise-team-totals` data, filter by specific fields to only retain
+information for the 31 current active teams. Then we can retrieve the
+`team.stats` data and only keep the odd rows (which are the raw data
+without ranking).
 
 ``` r
 # get all information from "franchise-team-totals"
@@ -717,34 +809,10 @@ team.total.raw <- get.nhl.data(table.name = "franchise-team-totals")
 team.total <- team.total.raw %>% rename(abbreviation = triCode) %>% 
   select(activeFranchise, gameTypeId, lastSeasonId, everything()) %>%
   filter(activeFranchise==1 & gameTypeId==2 & is.na(lastSeasonId))
-
-# get division data for different teams from "team.stats"
-division.raw <- get.nhl.data(modifier = "team.stats")
-
-# select only odd rows (does not include ranks), then select useful columns
-row.odd2 <- seq_len(nrow(division.raw)) %% 2  ## Create row indicator
-row.odd2 ## Print row indicator
+team.total
 ```
 
-    ##  [1] 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0
-    ## [39] 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1
-
-``` r
-division <- division.raw[row.odd2 == 1, ] %>%
-  select(franchiseId, name, abbreviation, teamName, venue.name, venue.city, 
-         division.id, division.name, conference.id, conference.name)
-
-# find common columns between the 2 data frames
-common.names.dv <- intersect(names(team.total), names(division))
-```
-
-``` r
-# combine the 2 tables (join matching rows from division to team.total) together using "franchiseId" as index
-new.data <- left_join(team.total, division, by="franchiseId")
-new.data
-```
-
-    ## # A tibble: 31 x 39
+    ## # A tibble: 31 x 30
     ##    activeFranchise gameTypeId lastSeasonId    id firstSeasonId franchiseId
     ##              <int>      <int>        <int> <int>         <int>       <int>
     ##  1               1          2           NA     1      19821983          23
@@ -757,18 +825,88 @@ new.data
     ##  8               1          2           NA    16      19171918           1
     ##  9               1          2           NA    17      19921993          30
     ## 10               1          2           NA    19      19271928           5
-    ## # … with 21 more rows, and 33 more variables: gamesPlayed <int>,
+    ## # … with 21 more rows, and 24 more variables: gamesPlayed <int>,
     ## #   goalsAgainst <int>, goalsFor <int>, homeLosses <int>,
     ## #   homeOvertimeLosses <int>, homeTies <int>, homeWins <int>, losses <int>,
     ## #   overtimeLosses <int>, penaltyMinutes <int>, pointPctg <dbl>, points <int>,
     ## #   roadLosses <int>, roadOvertimeLosses <int>, roadTies <int>, roadWins <int>,
     ## #   shootoutLosses <int>, shootoutWins <int>, shutouts <int>, teamId <int>,
-    ## #   teamName.x <chr>, ties <int>, abbreviation.x <chr>, wins <int>, name <chr>,
-    ## #   abbreviation.y <chr>, teamName.y <chr>, venue.name <chr>, venue.city <chr>,
-    ## #   division.id <int>, division.name <chr>, conference.id <int>,
-    ## #   conference.name <chr>
+    ## #   teamName <chr>, ties <int>, abbreviation <chr>, wins <int>
+
+``` r
+# get division data for different teams from "team.stats"
+division.raw <- get.nhl.data(modifier = "team.stats")
+
+# select only odd rows (does not include ranks), then select useful columns
+row.odd2 <- seq_len(nrow(division.raw)) %% 2  ## Create row indicator
+
+division <- division.raw[row.odd2 == 1, ] %>%
+  select(franchiseId, venue.name, venue.city, 
+         division.id, division.name, conference.id, conference.name)
+division
+```
+
+    ## # A tibble: 32 x 7
+    ##    franchiseId venue.name     venue.city division.id division.name conference.id
+    ##          <int> <chr>          <chr>            <int> <chr>                 <int>
+    ##  1          23 Prudential Ce… Newark              25 MassMutual E…             6
+    ##  2          22 Nassau Vetera… Uniondale           25 MassMutual E…             6
+    ##  3          10 Madison Squar… New York            25 MassMutual E…             6
+    ##  4          16 Wells Fargo C… Philadelp…          25 MassMutual E…             6
+    ##  5          17 PPG Paints Ar… Pittsburgh          25 MassMutual E…             6
+    ##  6           6 TD Garden      Boston              25 MassMutual E…             6
+    ##  7          19 KeyBank Center Buffalo             25 MassMutual E…             6
+    ##  8           1 Bell Centre    Montréal            28 Scotia North              6
+    ##  9          30 Canadian Tire… Ottawa              28 Scotia North              6
+    ## 10           5 Scotiabank Ar… Toronto             28 Scotia North              6
+    ## # … with 22 more rows, and 1 more variable: conference.name <chr>
+
+We find out what columns are present in both of these tables then left
+join using a common index (in this case we use the franchiseId) to
+create a new combined data named `new.data`.
+
+``` r
+# find common columns between the 2 data frames
+common.names.dv <- intersect(names(team.total), names(division))
+common.names.dv
+```
+
+    ## [1] "franchiseId"
+
+``` r
+# combine the 2 tables (join matching rows from division to team.total) together using "franchiseId" as index
+new.data <- left_join(team.total, division, by="franchiseId")
+new.data
+```
+
+    ## # A tibble: 31 x 36
+    ##    activeFranchise gameTypeId lastSeasonId    id firstSeasonId franchiseId
+    ##              <int>      <int>        <int> <int>         <int>       <int>
+    ##  1               1          2           NA     1      19821983          23
+    ##  2               1          2           NA     3      19721973          22
+    ##  3               1          2           NA     5      19261927          10
+    ##  4               1          2           NA     8      19671968          16
+    ##  5               1          2           NA     9      19671968          17
+    ##  6               1          2           NA    11      19241925           6
+    ##  7               1          2           NA    13      19701971          19
+    ##  8               1          2           NA    16      19171918           1
+    ##  9               1          2           NA    17      19921993          30
+    ## 10               1          2           NA    19      19271928           5
+    ## # … with 21 more rows, and 30 more variables: gamesPlayed <int>,
+    ## #   goalsAgainst <int>, goalsFor <int>, homeLosses <int>,
+    ## #   homeOvertimeLosses <int>, homeTies <int>, homeWins <int>, losses <int>,
+    ## #   overtimeLosses <int>, penaltyMinutes <int>, pointPctg <dbl>, points <int>,
+    ## #   roadLosses <int>, roadOvertimeLosses <int>, roadTies <int>, roadWins <int>,
+    ## #   shootoutLosses <int>, shootoutWins <int>, shutouts <int>, teamId <int>,
+    ## #   teamName <chr>, ties <int>, abbreviation <chr>, wins <int>,
+    ## #   venue.name <chr>, venue.city <chr>, division.id <int>, division.name <chr>,
+    ## #   conference.id <int>, conference.name <chr>
 
 ## Create new variables
+
+After the new table `new.data` is created, we can add in new variables
+that are functions of the existing variables. We append these new
+variables into the `new.data` table as new columns.
 
 ``` r
 # % of wins from all games played
@@ -789,36 +927,47 @@ new.data$perc.road.win <- (new.data$roadWins / (new.data$roadLosses + new.data$r
 # % of losses from road games
 new.data$perc.road.loss <- (new.data$roadLosses / (new.data$roadLosses + new.data$roadOvertimeLosses + new.data$roadTies + new.data$roadWins) *100) %>% round(2)
 
-new.data
+new.data %>% 
+  select(perc.total.games.win, perc.total.games.loss, perc.home.win, perc.home.loss, perc.road.win, perc.road.loss, 
+         everything())
 ```
 
-    ## # A tibble: 31 x 45
-    ##    activeFranchise gameTypeId lastSeasonId    id firstSeasonId franchiseId
-    ##              <int>      <int>        <int> <int>         <int>       <int>
-    ##  1               1          2           NA     1      19821983          23
-    ##  2               1          2           NA     3      19721973          22
-    ##  3               1          2           NA     5      19261927          10
-    ##  4               1          2           NA     8      19671968          16
-    ##  5               1          2           NA     9      19671968          17
-    ##  6               1          2           NA    11      19241925           6
-    ##  7               1          2           NA    13      19701971          19
-    ##  8               1          2           NA    16      19171918           1
-    ##  9               1          2           NA    17      19921993          30
-    ## 10               1          2           NA    19      19271928           5
-    ## # … with 21 more rows, and 39 more variables: gamesPlayed <int>,
+    ## # A tibble: 31 x 42
+    ##    perc.total.games… perc.total.game… perc.home.win perc.home.loss perc.road.win
+    ##                <dbl>            <dbl>         <dbl>          <dbl>         <dbl>
+    ##  1              46.6             40.5          52.8           35.1          40.4
+    ##  2              44.6             41.9          50.8           35.8          38.3
+    ##  3              44.0             41.4          49.2           34.8          38.7
+    ##  4              49.8             34.8          58.3           28            41.4
+    ##  5              45.6             41.6          54.6           32.7          36.7
+    ##  6              48.9             36.3          56.9           29.0          40.9
+    ##  7              45.8             39.6          53.4           32.4          38.1
+    ##  8              51.2             33.9          60.0           26.0          42.3
+    ##  9              44.2             42.8          48.5           37.6          40.0
+    ## 10              44.1             41.4          52.3           33.2          35.9
+    ## # … with 21 more rows, and 37 more variables: perc.road.loss <dbl>,
+    ## #   activeFranchise <int>, gameTypeId <int>, lastSeasonId <int>, id <int>,
+    ## #   firstSeasonId <int>, franchiseId <int>, gamesPlayed <int>,
     ## #   goalsAgainst <int>, goalsFor <int>, homeLosses <int>,
     ## #   homeOvertimeLosses <int>, homeTies <int>, homeWins <int>, losses <int>,
     ## #   overtimeLosses <int>, penaltyMinutes <int>, pointPctg <dbl>, points <int>,
     ## #   roadLosses <int>, roadOvertimeLosses <int>, roadTies <int>, roadWins <int>,
     ## #   shootoutLosses <int>, shootoutWins <int>, shutouts <int>, teamId <int>,
-    ## #   teamName.x <chr>, ties <int>, abbreviation.x <chr>, wins <int>, name <chr>,
-    ## #   abbreviation.y <chr>, teamName.y <chr>, venue.name <chr>, venue.city <chr>,
-    ## #   division.id <int>, division.name <chr>, conference.id <int>,
-    ## #   conference.name <chr>, perc.total.games.win <dbl>,
-    ## #   perc.total.games.loss <dbl>, perc.home.win <dbl>, perc.home.loss <dbl>,
-    ## #   perc.road.win <dbl>, perc.road.loss <dbl>
+    ## #   teamName <chr>, ties <int>, abbreviation <chr>, wins <int>,
+    ## #   venue.name <chr>, venue.city <chr>, division.id <int>, division.name <chr>,
+    ## #   conference.id <int>, conference.name <chr>
 
 ## Read data from 2 different endpoints and combine
+
+Another good example of reading data from 2 different endpoints and
+combining them together is finding common columns within the
+`franchise-goalie-records` and `franchise-skater-records` tables, select
+only the common columns for each table then row bind them together. This
+way we end up with a complete list of player information for all player
+positions.
+
+Below is how we combine player information for the Hurricanes franchise
+(teamID=26).
 
 ``` r
 # read from goalie records endpoint for hurricanes
@@ -881,7 +1030,15 @@ skater.records
 ``` r
 # find common columns between the two tibbles
 common.names <- intersect(names(goalie.records), names(skater.records))
+common.names
+```
 
+    ##  [1] "id"                "activePlayer"      "firstName"        
+    ##  [4] "franchiseId"       "franchiseName"     "gameTypeId"       
+    ##  [7] "gamesPlayed"       "lastName"          "playerId"         
+    ## [10] "positionCode"      "rookieGamesPlayed" "seasons"
+
+``` r
 # only keep common columns in each tibble
 goalie.records <- goalie.records %>% select(all_of(common.names))
 skater.records <- skater.records %>% select(all_of(common.names))
@@ -906,6 +1063,11 @@ hurricanes.players.record
     ## 10   525 FALSE        Greg               26 Carolina Hur…          2         219
     ## # … with 515 more rows, and 5 more variables: lastName <chr>, playerId <int>,
     ## #   positionCode <chr>, rookieGamesPlayed <int>, seasons <int>
+
+And we can do similar things to compile a complete list of players
+information for all positions for all franchises. We can also add in the
+franchise division information to the players information by left
+joining using `franchiseId` as the index.
 
 ``` r
 # read from goalie records endpoint for all teams
@@ -968,7 +1130,15 @@ skater.records2
 ``` r
 # find common columns between the two tibbles
 common.names <- intersect(names(goalie.records2), names(skater.records2))
+common.names
+```
 
+    ##  [1] "id"                "activePlayer"      "firstName"        
+    ##  [4] "franchiseId"       "franchiseName"     "gameTypeId"       
+    ##  [7] "gamesPlayed"       "lastName"          "playerId"         
+    ## [10] "positionCode"      "rookieGamesPlayed" "seasons"
+
+``` r
 # only keep common columns in each tibble
 goalie.records2 <- goalie.records2 %>% select(all_of(common.names))
 skater.records2 <- skater.records2 %>% select(all_of(common.names))
@@ -997,12 +1167,47 @@ players.record.all
 ``` r
 # find common columns between the above tibble and the previous division tibble
 common.names.players <- intersect(names(players.record.all), names(division))
-
-# combine 2 tibbles together (matching rows from division to players.record.all) using franchiseId as index
-new.data.players <- left_join(players.record.all, division, by="franchiseId")
+common.names.players
 ```
 
+    ## [1] "franchiseId"
+
+``` r
+# combine 2 tibbles together (matching rows from division to players.record.all) using franchiseId as index
+new.data.players <- left_join(players.record.all, division, by="franchiseId")
+new.data.players
+```
+
+    ## # A tibble: 18,287 x 18
+    ##       id activePlayer firstName franchiseId franchiseName gameTypeId gamesPlayed
+    ##    <int> <lgl>        <chr>           <int> <chr>              <int>       <int>
+    ##  1   235 FALSE        Don                15 Dallas Stars           2         315
+    ##  2   236 FALSE        Bob                28 Arizona Coyo…          2         281
+    ##  3   237 FALSE        Tony               11 Chicago Blac…          2         873
+    ##  4   238 FALSE        Grant              25 Edmonton Oil…          2         423
+    ##  5   239 FALSE        Ron                16 Philadelphia…          2         489
+    ##  6   240 FALSE        Curtis             18 St. Louis Bl…          2         280
+    ##  7   241 FALSE        Olie               24 Washington C…          2         711
+    ##  8   242 FALSE        Mike               18 St. Louis Bl…          2         347
+    ##  9   243 FALSE        Kirk               20 Vancouver Ca…          2         516
+    ## 10   244 FALSE        Gilles             13 Cleveland Ba…          2         250
+    ## # … with 18,277 more rows, and 11 more variables: lastName <chr>,
+    ## #   playerId <int>, positionCode <chr>, rookieGamesPlayed <int>, seasons <int>,
+    ## #   venue.name <chr>, venue.city <chr>, division.id <int>, division.name <chr>,
+    ## #   conference.id <int>, conference.name <chr>
+
 ## Contingency Tables
+
+After grabbing data and combining them into new tables, we can now
+create contingency tables. Contingency tables summarize the relationship
+between several categorical variables. Here we looks at 2 categorical
+variables at a time to examine their relationship. First we look at each
+categorical variable separately, then we can use the `table` and `kable`
+functions to create nice contingency tables.
+
+Here we first look at how many active and inactive players are in each
+franchise. Then we also look at what proportion of total active/inactive
+players are in each franchise.
 
 ``` r
 # see how many players are in each team
@@ -1938,6 +2143,12 @@ Winnipeg Jets
 </tbody>
 </table>
 
+We also create a second contingency table to look at how many franchises
+within a specific division had over 1500 total game wins. We also look
+at each categorical variable separately first, then combine the two
+variables into a contingency table. We also look at what proportion of
+teams within each division had over 1500 wins.
+
 ``` r
 # see how many teams are in each division
 table(new.data$division.name)
@@ -2031,16 +2242,16 @@ Scotia North
 </table>
 
 ``` r
-# find the proportion by margin=2 (by columns)
+# find the proportion by margin=1 (by rows)
 contingency.table2.prop <- table(new.data$division.name, new.data$wins>1500) %>%
-  prop.table(margin=2)*100
+  prop.table(margin=1)*100
 contingency.table2.prop %>%
-  kable(caption = "Proportion of Over 1500 Win Teams By Division")
+  kable(caption = "Proportion of Teams with Over 1500 Win within Each Division")
 ```
 
 <table>
 <caption>
-Proportion of Over 1500 Win Teams By Division
+Proportion of Teams with Over 1500 Win within Each Division
 </caption>
 <thead>
 <tr>
@@ -2060,10 +2271,10 @@ TRUE
 Discover Central
 </td>
 <td style="text-align:right;">
-35.294118
+75.00000
 </td>
 <td style="text-align:right;">
-14.28571
+25.00000
 </td>
 </tr>
 <tr>
@@ -2071,10 +2282,10 @@ Discover Central
 Honda West
 </td>
 <td style="text-align:right;">
-35.294118
+75.00000
 </td>
 <td style="text-align:right;">
-14.28571
+25.00000
 </td>
 </tr>
 <tr>
@@ -2082,10 +2293,10 @@ Honda West
 MassMutual East
 </td>
 <td style="text-align:right;">
-5.882353
+12.50000
 </td>
 <td style="text-align:right;">
-50.00000
+87.50000
 </td>
 </tr>
 <tr>
@@ -2093,16 +2304,21 @@ MassMutual East
 Scotia North
 </td>
 <td style="text-align:right;">
-23.529412
+57.14286
 </td>
 <td style="text-align:right;">
-21.42857
+42.85714
 </td>
 </tr>
 </tbody>
 </table>
 
 ## Numerical Summaries for Categorical Variables
+
+With lots of data to play with, we can create numerical summaries for
+the categorical variables. We can specifically look at each setting of a
+particular categorical variable and see summaries of the quantitative
+variables. We look at a few numerical summaries below.
 
 ``` r
 # find the average games played by each position
@@ -2208,16 +2424,49 @@ new.data %>% select(-3) %>% drop_na() %>%
 
 ## Plots
 
+A fun part of exploratory data analysis is creating visuals for more
+eye-catching representation of the data. We will create bar plots,
+histograms, box plot, and scatter plots using different data to
+demonstrate this.
+
 ### Bar plot
+
+We create 2 bar plots. The first bar plot looks at how many franchises
+are in each division with indication of conference in a stacked
+position. As someone who’s not familiar with hockey, this is a good
+starting point to get to know the basics of NHL. We see from this bar
+plot that 3 of the 4 divisions have 8 franchises, the fourth division
+only has 7 franchises. What makes this plot interesting, contrary to my
+initial thought, is that there are not 2 divisions per conference.
+Although we see that all of the 8 franchises in the Honda West division
+belong to the Western Conference, and all of the 8 franchises in the
+MassMutual East division belong to the Eastern Conference, for the other
+two divisions we have almost half of the franchises belonging to the
+Eastern Conference while the other half belonging to the Western
+Conference. This makes me want to investigate further how a team is
+classified into a division or a conference.
 
 ``` r
 ggplot(data = new.data, aes(x = division.name)) + 
-  geom_bar(aes(fill = as.factor(conference.name)), position = "dodge") + 
+  geom_bar(aes(fill = as.factor(conference.name)), position = "stack") + 
   labs(x = "Division", title = "Bar Plot of Number of Franchise in Each Division with Indication of Conference") + 
   scale_fill_discrete(name = "Conference Name", labels = c("Eastern Conference", "Western Conference"))
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20bar%20-%20new.data-1.png)<!-- -->
+
+For the second bar plot, we look at the number of players by position
+with indication of their active or inactive statuses. The bars are shown
+in a dodge position. We see out of all the players in the table, the
+position with the most players is defense, position with the least
+players is goalie (which makes sense, since we do don’t typically need
+many goalies per team). The table has records of a lot more inactive
+players compared to active players, this is clearly shown by the height
+of pink and blue bars. We have similar numbers of active center and
+defence players, but a lot more defence players are inactive compared to
+the center players. After looking at this plot, I’d want to look up how
+many players are needed to play in a hockey game, and how many are for
+each position.
 
 ``` r
 ggplot(data = players.record.all, aes(x = positionCode)) + 
@@ -2231,6 +2480,17 @@ ggplot(data = players.record.all, aes(x = positionCode)) +
 
 ### Histogram
 
+We also create 2 histograms. For the first histogram we look at how many
+games each player has played. Based on this histogram, we see majority
+of the players have played up to around 100 games, while the most games
+played is above 1500, which is shockingly impressive. We can confirm
+this by doing a `summary` function on the gamesPlayed column of the
+`players.record.all` table, the result indicates the maximum numbers of
+games played is 1687, while the mean number of games played is around
+115. With this result, I’d want to look up how many seasons of games a
+typical NHL player plays in his career, and how many games are typically
+in a season.
+
 ``` r
 ggplot(data = players.record.all, aes(x = gamesPlayed)) +
   geom_histogram(color = "purple", fill = "orange") +
@@ -2238,6 +2498,22 @@ ggplot(data = players.record.all, aes(x = gamesPlayed)) +
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20histogram%20-%20players.record.all-1.png)<!-- -->
+
+``` r
+summary(players.record.all$gamesPlayed)
+```
+
+    ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    ##     1.0    14.0    53.0   115.2   144.0  1687.0
+
+The second histogram breaks up the histogram by position of the players,
+this is done by adding a facet layer of positions on top of the
+histogram layer. We see the shape of the distribution of games played
+for each position follows similar patterns, although the height of bars
+are different, this is most likely contributed by the different numbers
+of players for each position previously shown by the bar plot. We cannot
+quite pinpoint which positioned player played 1687 games based on this
+histogram.
 
 ``` r
 ggplot(data = players.record.all, aes(x = gamesPlayed)) +
@@ -2249,18 +2525,63 @@ ggplot(data = players.record.all, aes(x = gamesPlayed)) +
 
 ![](Project1_files/figure-gfm/plot%20-%20histogram%20facet%20-%20player.record.all-1.png)<!-- -->
 
-### Boxplot
+### Box Plot
+
+For this box plot, we look at how many games are played for each
+division, the mean games played for division indicated by each
+conference is shown by the two lines. Box plots show the 5 number
+summary with dots indicating possible outliers. Based on this box plot,
+we see that the numbers of games played for the Honda West division is
+generally lower than the other 3 divisions. The games played in the
+Scotia North division seems to be the most varied compared to the other
+3 division, with the widest spread. We see the medium games played for
+the Discover Central and Honda West divisions are about the same, but
+other measures are quite different including minimum, 25th percentile,
+75th percentile and the maximum number of games. We see there are a
+couple of possible outlier values for both the Discover Central and
+MassMutual East divisions. Looking at the mean values indicated also by
+conference name, we see the Western Conference blue line doesn’t cross
+the MassMutual East division’s box plot at all, this makes sense since
+we saw from previous plots that all of the 8 teams in this division
+belong to the Eastern Conference. Similarly, the red line crosses the
+box plot of Honda West at a strange location, this is due to the fact
+that all of the 8 teams in the Honda West division belong in the Western
+Conference. Therefore, means are not calculated for these two divisions
+for these two conferences. For the Discover Central division, Western
+Conference teams have a higher mean games played compared to the Eastern
+Conference teams, this is interesting because we saw from previous plots
+that there are actually more Eastern Conference teams in this division.
+And for the Scotia North division, the mean number of games played for
+the Eastern Conference teams are a lot higher than those from the
+Western Conference teams, this is also interesting because there are
+only slightly more teams in the Western Conference than those in the
+Eastern Conference. So based off this plot, we can conclude that the
+number of games played vary greatly depending on which division a
+particular team’s in, the mean number of games played can also vary
+greatly based on the conference.
 
 ``` r
 ggplot(data = new.data, aes(x = division.name, y = gamesPlayed)) +
   geom_boxplot(fill = "maroon") +
   stat_summary(fun = mean, geom = "line", aes(group = conference.name, col = conference.name)) +
-  labs(x = "Division Name", y = "# of Games Played", title = "Number of Games Played for Each Division")
+  labs(x = "Division Name", y = "# of Games Played", title = "Number of Games Played for Each Division with Mean Games Played for Each Conference")
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20box%20plot%20-%20new.data-1.png)<!-- -->
 
 ### Scatter Plot
+
+We now look at a few scatter plots. For the first scatter plot, we look
+at the number of games won versus the number of games lost for each of
+the 31 active franchises. Each dot represents a franchise, the blue line
+represents the generalized additive model smoother, while the yellow
+line represents the best fit linear model smoother. I also added a black
+diagonal abline representing the 1 to 1 ratio of wins and losses.
+Looking specifically at the black line, we see all but 4 teams are below
+the line, indicating that these teams have higher numbers of wins than
+losses. The best fit linear model line has a slightly smaller slope but
+does not fit all of the data well. The blue generalized additive model
+smoother fits the data better.
 
 ``` r
 ggplot(data = new.data, aes(x = wins, y = losses)) +
@@ -2272,6 +2593,22 @@ ggplot(data = new.data, aes(x = wins, y = losses)) +
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20scatter%20-%20new.data-1.png)<!-- -->
+
+Next we look at the same data but break up the 31 teams into each
+conference, this is done by adding a facet layer to the scatter plot
+layer. Looking specifically at the black diagonal line, we see that all
+except 1 team in the Eastern Conference are below the line (teams below
+the line have higher number of wins compared to losses), and we have 3
+teams above the line for the Western Conference. The yellow best fit
+linear model smoother line has a bigger slope for the Western Conference
+compared to the Eastern, indicating that teams in the Western Conference
+generally have close to same number of wins and losses, while the teams
+in the Eastern Conference tend to have more games won than lost. The
+generalized additive model smoother for the Western Conference is very
+close to the yellow best fit linear model smoother, while the
+generalized additive model smoother for the Eastern Conference varies a
+bit from the best fit linear model smoother towards the larger games won
+values.
 
 ``` r
 ggplot(data = new.data, aes(x = wins, y = losses)) +
@@ -2288,54 +2625,113 @@ ggplot(data = new.data, aes(x = wins, y = losses)) +
 
 ### Scatter Plot using Group
 
+Next, we further subset the number of total games won and loss. For
+these next 4 plots, we will use the `group=conference.name` to get a
+clearer idea of which teams belong to which conference.
+
+This first plot, we look at the number of home games won versus the
+number of home games lost for each team with indication of conference.
+We see for these home games, almost all teams have higher numbers of
+games won compared to games lost. The purple line represent the best fit
+linear model smoother for the Western Conference teams (blue dots), and
+the green line represent the besst fit linear model smoother for the
+Eastern Conference teams (orange dots). We see the smoother for the
+Western Conference has a bigger slope than the Eastern Conference, this
+seem to indicate when comparing with the Eastern Conference teams, the
+Western Conference teams have less difference in the number of wins
+minus losses for home games. The Eastern Conference teams tend to have
+even higher number of home games won compared to home games lost.
+
 ``` r
 ggplot(data = new.data, aes(x = homeWins, y = homeLosses)) +
   geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
-  geom_abline(intercept=0, slope=1) +
+  geom_abline(intercept=0, slope=1) +  ## diagonal line indicating 1-1 ratio for win/losses
   geom_smooth(data = subset(new.data, conference.name=="Eastern"),
-              method = "lm", color = "springgreen") +
+              method = "lm", color = "springgreen") +  ## best fit linear model smoother
   geom_smooth(data = subset(new.data, conference.name=="Western"),
-              method = "lm", color = "slateblue") +
+              method = "lm", color = "slateblue") +  ## best fit linear model smoother
   labs(x = "Home Games Won", y = "Home Games Lost", title = "Number of Home Games Won vs. Lost for Each Franchise by Conference")
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20point%20and%20group%20-%20home%20games-1.png)<!-- -->
 
+Next we look at how many road games are won versus how many road games
+are lost. Here we see we have all but 2 teams on the black line,
+indicating that most of the Eastern Conference teams have higher number
+road games lost compared to road games won. We have about 5 teams in the
+Western Conference that are on or below the line, the other teams in
+this conference also have higher number of road games lost compared to
+road games won. Here the best fit linear model smoother for the Western
+Conference has larger slope than the smoother for the Eastern
+Conference, this seem to suggest that while more Western Conference
+teams are below the black line (meaning these teams have higher number
+of road game wins than losses), some of the Western Conference teams
+that are above the black line will have bigger difference of number of
+road games lost minus won. We can also draw a conclusion that teams tend
+to do better for home games compared to road games, regardless of which
+conference the team’s in.
+
 ``` r
 ggplot(data = new.data, aes(x = roadWins, y = roadLosses)) +
   geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
-  geom_abline(intercept=0, slope=1) +
+  geom_abline(intercept=0, slope=1) +  ## diagonal line indicating 1-1 ratio for win/losses
   geom_smooth(data = subset(new.data, conference.name=="Eastern"),
-              method = "lm", color = "springgreen") +
+              method = "lm", color = "springgreen") +  ## best fit linear model smoother
   geom_smooth(data = subset(new.data, conference.name=="Western"),
-              method = "lm", color = "slateblue") +
+              method = "lm", color = "slateblue") +  ## best fit linear model smoother
   labs(x = "Road Games Won", y = "Road Games Lost", title = "Number of Road Games Won vs. Lost for Each Franchise by Conference")
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20point%20and%20group%20-%20road%20games-1.png)<!-- -->
 
+It also is worth while to look at the percentage of home games won
+versus percentage of road games won for each team as indicated by
+conference. The diagonal black line is barely visible at the upper left
+corner, meaning all of the teams are well below this black line. So all
+of the teams have a higher percentage of home games won compared to road
+games won. The best fit linear model smoother for the Eastern Conference
+has a smaller slope, so these teams tend to have a larger difference in
+the percentage of home games won minus percentage of road games won. But
+all of these teams do way better on home games, which further confirms
+our previous conclusion.
+
 ``` r
 ggplot(data = new.data, aes(x = perc.home.win, y = perc.road.win)) +
   geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
-  geom_abline(intercept=0, slope=1) +
+  geom_abline(intercept=0, slope=1) +  ## diagonal line indicating 1-1 ratio for win/losses
   geom_smooth(data = subset(new.data, conference.name=="Eastern"),
-              method = "lm", color = "springgreen") +
+              method = "lm", color = "springgreen") +  ## best fit linear model smoother
   geom_smooth(data = subset(new.data, conference.name=="Western"),
-              method = "lm", color = "slateblue") +
+              method = "lm", color = "slateblue") +  ## best fit linear model smoother
   labs(x = "% of Home Games Won", y = "% Road Games Won", title = "% of Home Games Won vs. Road Games Won for Each Franchise by Conference")
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20point%20and%20group%20-%20perc%20won%20games-1.png)<!-- -->
 
+Similarly, we can look at the percentage of home games lost compared to
+percentage of road games lost. The diagonal black line is barely visible
+at the lower right of the plot, so all of these teams are above the line
+meaning they all have higher percentage of road games lost compared to
+percentage of home games lost. The best fit linear model smoother is
+flatter for the Eastern Conference teams, meaning these teams tend to
+have larger difference of percentage of home games lost minus percentage
+of road games lost. All of these teams do worse on road games.
+
 ``` r
 ggplot(data = new.data, aes(x = perc.home.loss, y = perc.road.loss)) +
   geom_point(aes(fill=conference.name, color=conference.name, group=conference.name)) +
-  geom_abline(intercept=0, slope=1) +
+  geom_abline(intercept=0, slope=1) +  ## diagonal line indicating 1-1 ratio for win/losses
   geom_smooth(data = subset(new.data, conference.name=="Eastern"),
-              method = "lm", color = "springgreen") +
+              method = "lm", color = "springgreen") +  ## best fit linear model smoother
   geom_smooth(data = subset(new.data, conference.name=="Western"),
-              method = "lm", color = "slateblue") +
-  labs(x = "% of Home Games Loss", y = "% Road Games Loss", title = "% of Home Games Loss vs. Road Games Loss for Each Franchise by Conference")
+              method = "lm", color = "slateblue") +  ## best fit linear model smoother
+  labs(x = "% of Home Games Loss", y = "% Road Games Loss", title = "% of Home Games Win vs. Road Games Loss for Each Franchise by Conference")
 ```
 
 ![](Project1_files/figure-gfm/plot%20-%20point%20and%20group%20-%20perc%20lost%20games-1.png)<!-- -->
+
+# Outro
+
+I hope you found this vignette useful. If you have any suggestions,
+questions, comments, please send them to me at <xyin2@ncsu.edu>. Thank
+you.
